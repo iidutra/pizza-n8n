@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+
+{% block title %}Comprovantes - Pizzaria do Negao{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Comprovantes Pendentes de Verificacao</h3>
+    </div>
+
+    {% if orders %}
+        {% for order in orders %}
+        <div class="payment-card">
+            <div>
+                {% if order.payment_receipt %}
+                    <img src="{{ order.payment_receipt.url }}" alt="Comprovante" class="receipt-preview" onclick="openImageModal('{{ order.payment_receipt.url }}')">
+                {% else %}
+                    <div style="width: 200px; height: 200px; background: var(--bg-primary); display: flex; align-items: center; justify-content: center; border-radius: 5px;">
+                        <span style="color: var(--text-secondary);">Sem imagem</span>
+                    </div>
+                {% endif %}
+            </div>
+            <div>
+                <h4 style="color: var(--accent-pink); margin-bottom: 10px;">Pedido #{{ order.id }}</h4>
+                <p><strong>Cliente:</strong> {{ order.customer.name }}</p>
+                <p><strong>WhatsApp:</strong> {{ order.customer.phone }}</p>
+                <p><strong>Data:</strong> {{ order.created_at|date:"d/m/Y H:i" }}</p>
+
+                <ul class="order-items" style="margin: 15px 0;">
+                    {% for item in order.items.all %}
+                        <li>{{ item.quantity }}x {{ item.product.name }} - R$ {{ item.total_price }}</li>
+                    {% endfor %}
+                </ul>
+
+                <p style="font-size: 1.2rem; color: var(--accent-green); font-weight: bold;">
+                    Total Esperado: R$ {{ order.total }}
+                </p>
+
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button class="btn btn-success" onclick="confirmPaymentFromList({{ order.id }})">
+                        Confirmar Pagamento
+                    </button>
+                    <button class="btn btn-danger" onclick="rejectPayment({{ order.id }})">
+                        Recusar / Solicitar Novo
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="color: var(--text-secondary); text-align: center; padding: 40px;">
+            Nenhum comprovante pendente de verificacao
+        </p>
+    {% endif %}
+</div>
+
+<!-- Modal de Imagem -->
+<div id="imageModal" class="modal" onclick="closeImageModal()">
+    <div class="modal-content" style="max-width: 90%; max-height: 90%; padding: 10px;" onclick="event.stopPropagation()">
+        <img id="modalImage" src="" alt="Comprovante" style="max-width: 100%; max-height: 80vh;">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openImageModal(imageUrl) {
+    document.getElementById('modalImage').src = imageUrl;
+    document.getElementById('imageModal').classList.add('active');
+}
+
+function closeImageModal() {
+    document.getElementById('imageModal').classList.remove('active');
+}
+
+function confirmPaymentFromList(orderId) {
+    if (!confirm('Confirmar pagamento deste pedido?')) {
+        return;
+    }
+
+    fetch('/ajax/confirm-payment/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            location.reload();
+        } else {
+            alert('Erro ao confirmar pagamento');
+        }
+    });
+}
+
+function rejectPayment(orderId) {
+    if (!confirm('Recusar comprovante e solicitar novo ao cliente?')) {
+        return;
+    }
+
+    fetch('/ajax/reject-payment/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert('Mensagem enviada ao cliente solicitando novo comprovante.');
+            location.reload();
+        } else {
+            alert('Erro ao recusar comprovante');
+        }
+    });
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeImageModal();
+    }
+});
+</script>
+{% endblock %}

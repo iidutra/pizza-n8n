@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+
+{% block title %}Relatorios - Pizzaria do Negao{% endblock %}
+
+{% block header_actions %}
+<div style="display: flex; gap: 10px; align-items: center;">
+    <a href="?period=today" class="btn {% if period == 'today' %}btn-primary{% else %}btn-secondary{% endif %}">Hoje</a>
+    <a href="?period=week" class="btn {% if period == 'week' %}btn-primary{% else %}btn-secondary{% endif %}">Semana</a>
+    <a href="?period=month" class="btn {% if period == 'month' %}btn-primary{% else %}btn-secondary{% endif %}">Mes</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Metricas principais -->
+<div class="stats-grid">
+    <div class="stat-card orders">
+        <div class="stat-value">{{ total_orders }}</div>
+        <div class="stat-label">Total de Pedidos</div>
+    </div>
+
+    <div class="stat-card revenue">
+        <div class="stat-value">R$ {{ total_revenue|floatformat:2 }}</div>
+        <div class="stat-label">Faturamento</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-value">R$ {{ average_ticket|floatformat:2 }}</div>
+        <div class="stat-label">Ticket Medio</div>
+    </div>
+
+    <div class="stat-card cancelled">
+        <div class="stat-value">{{ cancelled_count }} ({{ cancellation_rate|floatformat:1 }}%)</div>
+        <div class="stat-label">Cancelamentos</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <!-- Top Produtos -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Produtos Mais Vendidos</h3>
+        </div>
+
+        {% if top_products %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Produto</th>
+                        <th>Qtd</th>
+                        <th>Faturamento</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in top_products %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ product.product_name }}</td>
+                        <td>{{ product.total_sold }}</td>
+                        <td>R$ {{ product.total_revenue|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p style="color: var(--text-secondary); text-align: center; padding: 20px;">
+                Sem dados para o periodo
+            </p>
+        {% endif %}
+    </div>
+
+    <!-- Entregas por Bairro -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Entregas por Bairro</h3>
+        </div>
+
+        {% if neighborhood_data %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Bairro</th>
+                        <th>Pedidos</th>
+                        <th>Faturamento</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in neighborhood_data %}
+                    <tr>
+                        <td>{{ item.neighborhood|default:"Nao informado" }}</td>
+                        <td>{{ item.count }}</td>
+                        <td>R$ {{ item.revenue|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p style="color: var(--text-secondary); text-align: center; padding: 20px;">
+                Sem dados para o periodo
+            </p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Horarios de Pico -->
+<div class="card">
+    <div class="card-header">
+        <h3>Pedidos por Hora (Horarios de Pico)</h3>
+    </div>
+
+    {% if hourly_data %}
+        <div class="chart-container" style="display: flex; align-items: flex-end; height: 200px; gap: 5px; padding: 20px;">
+            {% for item in hourly_data %}
+            <div style="flex: 1; display: flex; flex-direction: column; align-items: center;">
+                <div style="background-color: var(--accent-purple); width: 100%; height: {{ item.count|divisibleby:1 }}0px; min-height: 10px; max-height: 180px; border-radius: 4px 4px 0 0;"></div>
+                <span style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 5px;">{{ item.hour }}h</span>
+                <span style="font-size: 0.8rem; color: var(--text-primary);">{{ item.count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p style="color: var(--text-secondary); text-align: center; padding: 20px;">
+            Sem dados para o periodo
+        </p>
+    {% endif %}
+</div>
+
+<!-- Resumo do Periodo -->
+<div class="card">
+    <div class="card-header">
+        <h3>Resumo do Periodo</h3>
+    </div>
+
+    <div class="grid-3">
+        <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 2rem; color: var(--accent-purple);">{{ total_orders|add:cancelled_count|default:0 }}</div>
+            <div style="color: var(--text-secondary);">Pedidos Totais</div>
+        </div>
+        <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 2rem; color: var(--accent-cyan);">{{ total_orders|add:"-"|add:cancelled_count|default:0 }}</div>
+            <div style="color: var(--text-secondary);">Pedidos Concluidos</div>
+        </div>
+        <div style="text-align: center; padding: 20px;">
+            <div style="font-size: 2rem; color: var(--accent-yellow);">{{ start_date }} - {{ end_date }}</div>
+            <div style="color: var(--text-secondary);">Periodo Analisado</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

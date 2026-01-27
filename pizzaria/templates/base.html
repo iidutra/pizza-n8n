@@ -1,0 +1,86 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Pizzaria do Negao{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/dracula.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <h1>Pizzaria do Negao</h1>
+            </div>
+            <ul class="sidebar-nav">
+                <li>
+                    <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'dashboard_alt' %}active{% endif %}">
+                        <span class="icon">&#128230;</span>
+                        Pedidos
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'payments' %}" class="{% if request.resolver_match.url_name == 'payments' %}active{% endif %}">
+                        <span class="icon">&#128179;</span>
+                        Comprovantes
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'menu' %}" class="{% if request.resolver_match.url_name == 'menu' %}active{% endif %}">
+                        <span class="icon">&#127829;</span>
+                        Cardapio
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'delivery_fees' %}" class="{% if request.resolver_match.url_name == 'delivery_fees' %}active{% endif %}">
+                        <span class="icon">&#128666;</span>
+                        Taxas de Entrega
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'reports' %}" class="{% if request.resolver_match.url_name == 'reports' %}active{% endif %}">
+                        <span class="icon">&#128200;</span>
+                        Relatorios
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}">
+                        <span class="icon">&#9881;</span>
+                        Configuracoes
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'logout' %}">
+                        <span class="icon">&#128682;</span>
+                        Sair
+                    </a>
+                </li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <h2>{{ page_title|default:"Dashboard" }}</h2>
+                <div class="header-actions">
+                    {% block header_actions %}{% endblock %}
+                </div>
+            </header>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="{% static 'js/dashboard.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

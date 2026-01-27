@@ -1,0 +1,131 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pizzaria-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pizzaria
+      POSTGRES_USER: pizzaria_user
+      POSTGRES_PASSWORD: pizzaria_pass
+      TZ: America/Sao_Paulo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pizzaria_user -d pizzaria"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pizzaria-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: pizzaria-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=America/Sao_Paulo
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://n8n:5678
+      - N8N_EDITOR_BASE_URL=http://localhost:5678
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin123
+      - N8N_ENCRYPTION_KEY=pizzaria-chave-secreta-forte-123
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=pizzaria
+      - DB_POSTGRESDB_USER=pizzaria_user
+      - DB_POSTGRESDB_PASSWORD=pizzaria_pass
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - N8N_SECURE_COOKIE=false
+    volumes:
+      - n8ndata:/home/node/.n8n
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: pizzaria-waha
+    restart: always
+    depends_on:
+      - redis
+    environment:
+      WAHA_API_KEY: "pizzaria-api-key-123"
+      WAHA_API_KEY_PLAIN: "pizzaria-api-key-123"
+      REDIS_URL: "redis://redis:6379"
+      WAHA_PRINT_QR: "true"
+      WHATSAPP_DEFAULT_ENGINE: "GOWS"
+      WAHA_DASHBOARD_ENABLED: "true"
+      WAHA_DASHBOARD_USERNAME: "admin"
+      WAHA_DASHBOARD_PASSWORD: "admin123"
+      WHATSAPP_SWAGGER_ENABLED: "true"
+      WHATSAPP_SWAGGER_USERNAME: "admin"
+      WHATSAPP_SWAGGER_PASSWORD: "admin123"
+      WHATSAPP_HOOK_URL: "http://n8n:5678/webhook/waha-inbound"
+      WHATSAPP_HOOK_EVENTS: "message,session.status"
+      WHATSAPP_HOOK_RETRIES_POLICY: "linear"
+      WHATSAPP_HOOK_RETRIES_DELAY_SECONDS: "2"
+      WHATSAPP_HOOK_RETRIES_ATTEMPTS: "4"
+      
+    ports:
+      - "3000:3000"
+    volumes:
+      - wahadata:/data
+
+  web:
+    build: .
+    container_name: pizzaria-backend
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py setup_initial_data &&
+             python manage.py collectstatic --noinput &&
+             gunicorn --bind 0.0.0.0:8000 --workers 2 --timeout 120 backend.wsgi:application"
+    environment:
+      - TZ=America/Sao_Paulo
+      - DEBUG=True
+      - SECRET_KEY=pizzaria-secret-key-muito-forte-123
+      - DATABASE_URL=postgresql://pizzaria_user:pizzaria_pass@db:5432/pizzaria
+      - REDIS_URL=redis://redis:6379/0
+      - WAHA_URL=http://waha:3000
+      - WAHA_SESSION=default
+      - WAHA_API_KEY=pizzaria-api-key-123
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  pgdata:
+  redisdata:
+  n8ndata:
+  wahadata:
+  static_volume:
+  media_volume:

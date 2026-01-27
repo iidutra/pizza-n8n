@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+
+{% block title %}Cardapio - Pizzaria do Negao{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary" onclick="openProductModal()">+ Novo Produto</button>
+{% endblock %}
+
+{% block content %}
+<div class="grid-2">
+    <!-- Produtos -->
+    <div class="card">
+        <div class="card-header">
+            <h3>Produtos</h3>
+        </div>
+
+        <h4 style="color: var(--accent-pink); margin-bottom: 15px;">Pizzas</h4>
+        {% for product in products %}
+            {% if product.category == 'PIZZA' %}
+            <div class="product-card {% if not product.active %}inactive{% endif %}">
+                <div class="product-info">
+                    <h4>{{ product.name }}</h4>
+                    <span class="category">{{ product.get_category_display }}</span>
+                    <span class="price">R$ {{ product.price }}</span>
+                </div>
+                <div>
+                    <button class="btn btn-secondary btn-sm" onclick="editProduct({{ product.id }}, '{{ product.name }}', '{{ product.description }}', '{{ product.price }}', '{{ product.category }}', {{ product.active|yesno:'true,false' }})">Editar</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteProduct({{ product.id }})">Excluir</button>
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+
+        <h4 style="color: var(--accent-cyan); margin: 20px 0 15px;">Bebidas</h4>
+        {% for product in products %}
+            {% if product.category == 'BEBIDA' %}
+            <div class="product-card {% if not product.active %}inactive{% endif %}">
+                <div class="product-info">
+                    <h4>{{ product.name }}</h4>
+                    <span class="category">{{ product.get_category_display }}</span>
+                    <span class="price">R$ {{ product.price }}</span>
+                </div>
+                <div>
+                    <button class="btn btn-secondary btn-sm" onclick="editProduct({{ product.id }}, '{{ product.name }}', '{{ product.description }}', '{{ product.price }}', '{{ product.category }}', {{ product.active|yesno:'true,false' }})">Editar</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteProduct({{ product.id }})">Excluir</button>
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+
+        <h4 style="color: var(--accent-orange); margin: 20px 0 15px;">Adicionais</h4>
+        {% for product in products %}
+            {% if product.category == 'ADICIONAL' %}
+            <div class="product-card {% if not product.active %}inactive{% endif %}">
+                <div class="product-info">
+                    <h4>{{ product.name }}</h4>
+                    <span class="category">{{ product.get_category_display }}</span>
+                    <span class="price">R$ {{ product.price }}</span>
+                </div>
+                <div>
+                    <button class="btn btn-secondary btn-sm" onclick="editProduct({{ product.id }}, '{{ product.name }}', '{{ product.description }}', '{{ product.price }}', '{{ product.category }}', {{ product.active|yesno:'true,false' }})">Editar</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteProduct({{ product.id }})">Excluir</button>
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- Cardapio e Promocoes -->
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <h3>Imagens do Cardapio</h3>
+            </div>
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label>Imagem do Cardapio</label>
+                    <input type="file" name="menu_image" class="form-control" accept="image/*">
+                    {% if settings.menu_image %}
+                        <img src="{{ settings.menu_image.url }}" class="image-preview" alt="Cardapio atual">
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label>Imagem da Promocao</label>
+                    <input type="file" name="promo_image" class="form-control" accept="image/*">
+                    {% if settings.promo_image %}
+                        <img src="{{ settings.promo_image.url }}" class="image-preview" alt="Promocao atual">
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label>Texto da Promocao</label>
+                    <textarea name="promo_text" class="form-control">{{ settings.promo_text }}</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-check">
+                        <input type="checkbox" name="promo_active" {% if settings.promo_active %}checked{% endif %}>
+                        Promocao Ativa
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Salvar Imagens</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Produto -->
+<div id="productModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="productModalTitle">Novo Produto</h3>
+            <button class="modal-close" onclick="closeProductModal()">&times;</button>
+        </div>
+        <form method="post" action="{% url 'product_action' %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" id="productAction" value="create">
+            <input type="hidden" name="product_id" id="productId">
+
+            <div class="form-group">
+                <label>Nome</label>
+                <input type="text" name="name" id="productName" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label>Descricao</label>
+                <textarea name="description" id="productDescription" class="form-control"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Preco (R$)</label>
+                <input type="number" name="price" id="productPrice" class="form-control" step="0.01" required>
+            </div>
+
+            <div class="form-group">
+                <label>Categoria</label>
+                <select name="category" id="productCategory" class="form-control" required>
+                    <option value="PIZZA">Pizza</option>
+                    <option value="BEBIDA">Bebida</option>
+                    <option value="ADICIONAL">Adicional</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Imagem</label>
+                <input type="file" name="image" class="form-control" accept="image/*">
+            </div>
+
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" name="active" id="productActive" checked>
+                    Ativo
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Salvar</button>
+        </form>
+    </div>
+</div>
+
+<!-- Form de Delete oculto -->
+<form id="deleteProductForm" method="post" action="{% url 'product_action' %}" style="display: none;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="delete">
+    <input type="hidden" name="product_id" id="deleteProductId">
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openProductModal() {
+    document.getElementById('productModalTitle').textContent = 'Novo Produto';
+    document.getElementById('productAction').value = 'create';
+    document.getElementById('productId').value = '';
+    document.getElementById('productName').value = '';
+    document.getElementById('productDescription').value = '';
+    document.getElementById('productPrice').value = '';
+    document.getElementById('productCategory').value = 'PIZZA';
+    document.getElementById('productActive').checked = true;
+    document.getElementById('productModal').classList.add('active');
+}
+
+function editProduct(id, name, description, price, category, active) {
+    document.getElementById('productModalTitle').textContent = 'Editar Produto';
+    document.getElementById('productAction').value = 'update';
+    document.getElementById('productId').value = id;
+    document.getElementById('productName').value = name;
+    document.getElementById('productDescription').value = description;
+    document.getElementById('productPrice').value = price;
+    document.getElementById('productCategory').value = category;
+    document.getElementById('productActive').checked = active;
+    document.getElementById('productModal').classList.add('active');
+}
+
+function closeProductModal() {
+    document.getElementById('productModal').classList.remove('active');
+}
+
+function deleteProduct(id) {
+    if (!confirm('Tem certeza que deseja excluir este produto?')) {
+        return;
+    }
+    document.getElementById('deleteProductId').value = id;
+    document.getElementById('deleteProductForm').submit();
+}
+</script>
+{% endblock %}

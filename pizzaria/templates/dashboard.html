@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+
+{% block title %}Pedidos - Pizzaria do Negao{% endblock %}
+
+{% block content %}
+<div class="kanban-board">
+    <!-- Novos Pedidos -->
+    <div class="kanban-column new">
+        <div class="kanban-column-header">
+            <h3>Novos</h3>
+            <span class="badge">{{ new_orders.count }}</span>
+        </div>
+        <div class="kanban-cards">
+            {% for order in new_orders %}
+                {% include 'partials/order_card.html' with order=order %}
+            {% empty %}
+                <p style="color: var(--text-secondary); text-align: center; padding: 20px;">Nenhum pedido novo</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Aguardando Pagamento -->
+    <div class="kanban-column awaiting">
+        <div class="kanban-column-header">
+            <h3>Aguardando Pagamento</h3>
+            <span class="badge">{{ awaiting_payment.count }}</span>
+        </div>
+        <div class="kanban-cards">
+            {% for order in awaiting_payment %}
+                {% include 'partials/order_card.html' with order=order %}
+            {% empty %}
+                <p style="color: var(--text-secondary); text-align: center; padding: 20px;">Nenhum pedido aguardando</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Em Preparo -->
+    <div class="kanban-column preparing">
+        <div class="kanban-column-header">
+            <h3>Em Preparo</h3>
+            <span class="badge">{{ preparing.count }}</span>
+        </div>
+        <div class="kanban-cards">
+            {% for order in preparing %}
+                {% include 'partials/order_card.html' with order=order %}
+            {% empty %}
+                <p style="color: var(--text-secondary); text-align: center; padding: 20px;">Nenhum pedido em preparo</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Saiu para Entrega / Retirada -->
+    <div class="kanban-column delivery">
+        <div class="kanban-column-header">
+            <h3>Entrega / Retirada</h3>
+            <span class="badge">{{ out_delivery.count }}</span>
+        </div>
+        <div class="kanban-cards">
+            {% for order in out_delivery %}
+                {% include 'partials/order_card.html' with order=order %}
+            {% empty %}
+                <p style="color: var(--text-secondary); text-align: center; padding: 20px;">Nenhum pedido em entrega</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Confirmacao -->
+<div id="confirmModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="confirmModalTitle">Confirmar Acao</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <p id="confirmModalMessage"></p>
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+            <button class="btn btn-primary" id="confirmModalBtn">Confirmar</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updateOrderStatus(orderId, status, statusName) {
+    if (!confirm(`Deseja mudar o status para "${statusName}"?`)) {
+        return;
+    }
+
+    fetch('/ajax/update-order-status/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            order_id: orderId,
+            status: status
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            location.reload();
+        } else {
+            alert('Erro ao atualizar status');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erro ao atualizar status');
+    });
+}
+
+function confirmPayment(orderId) {
+    if (!confirm('Confirmar pagamento deste pedido?')) {
+        return;
+    }
+
+    fetch('/ajax/confirm-payment/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            location.reload();
+        } else {
+            alert('Erro ao confirmar pagamento');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erro ao confirmar pagamento');
+    });
+}
+
+function cancelOrder(orderId) {
+    if (!confirm('Tem certeza que deseja CANCELAR este pedido?')) {
+        return;
+    }
+
+    updateOrderStatus(orderId, 'CANCELLED', 'Cancelado');
+}
+
+function completeOrder(orderId) {
+    updateOrderStatus(orderId, 'COMPLETED', 'Finalizado');
+}
+</script>
+{% endblock %}

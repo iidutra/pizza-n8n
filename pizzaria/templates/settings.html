@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block title %}Configuracoes - Pizzaria do Negao{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Configuracoes do Negocio</h3>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <div class="grid-2">
+            <div class="form-group">
+                <label>Nome do Negocio</label>
+                <input type="text" name="business_name" class="form-control" value="{{ settings.business_name }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Chave Pix</label>
+                <input type="text" name="pix_key" class="form-control" value="{{ settings.pix_key }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Nome do Recebedor Pix</label>
+                <input type="text" name="pix_name" class="form-control" value="{{ settings.pix_name }}" required>
+            </div>
+
+            <div></div>
+
+            <div class="form-group">
+                <label>Horario de Abertura</label>
+                <input type="time" name="opening_time" class="form-control" value="{{ settings.opening_time|time:'H:i' }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Horario de Fechamento</label>
+                <input type="time" name="closing_time" class="form-control" value="{{ settings.closing_time|time:'H:i' }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Tempo Minimo de Entrega (min)</label>
+                <input type="number" name="min_delivery_time" class="form-control" value="{{ settings.min_delivery_time }}" required>
+            </div>
+
+            <div class="form-group">
+                <label>Tempo Maximo de Entrega (min)</label>
+                <input type="number" name="max_delivery_time" class="form-control" value="{{ settings.max_delivery_time }}" required>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Salvar Configuracoes</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>Informacoes do Sistema</h3>
+    </div>
+
+    <div class="grid-3">
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 1rem; color: var(--text-primary);">
+                <a href="{% url 'admin:index' %}" target="_blank">Abrir Admin Django</a>
+            </div>
+            <div class="stat-label">Gerenciamento avancado</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 1rem; color: var(--accent-cyan);">
+                /api/bot/message/
+            </div>
+            <div class="stat-label">Webhook do Bot</div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-value" style="font-size: 1rem; color: var(--accent-green);">
+                Ativo
+            </div>
+            <div class="stat-label">Status do Sistema</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

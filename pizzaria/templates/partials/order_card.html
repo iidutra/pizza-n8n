@@ -1,0 +1,95 @@
+<div class="order-card" data-order-id="{{ order.id }}">
+    <div class="order-card-header">
+        <span class="order-number">#{{ order.id }}</span>
+        <span class="order-time">{{ order.created_at|timesince }} atras</span>
+    </div>
+
+    <div class="order-card-body">
+        <p><span class="label">Cliente:</span> {{ order.customer.name }}</p>
+        <p><span class="label">WhatsApp:</span> {{ order.customer.phone }}</p>
+
+        <ul class="order-items">
+            {% for item in order.items.all %}
+                <li>{{ item.quantity }}x {{ item.product.name }}</li>
+                {% if item.notes %}
+                    <li style="font-size: 0.8rem; color: var(--accent-yellow);">Obs: {{ item.notes }}</li>
+                {% endif %}
+            {% endfor %}
+        </ul>
+
+        {% if order.notes %}
+            <p><span class="label">Obs:</span> {{ order.notes }}</p>
+        {% endif %}
+
+        <p>
+            <span class="label">Tipo:</span>
+            <span class="order-type-badge {% if order.order_type == 'DELIVERY' %}delivery{% else %}pickup{% endif %}">
+                {{ order.get_order_type_display }}
+            </span>
+        </p>
+
+        {% if order.order_type == 'DELIVERY' %}
+            <p><span class="label">Bairro:</span> {{ order.neighborhood }} (+R$ {{ order.delivery_fee }})</p>
+            <p><span class="label">Endereco:</span> {{ order.delivery_address }}</p>
+        {% endif %}
+
+        <div class="order-totals">
+            <p><span class="label">Subtotal:</span> R$ {{ order.subtotal }}</p>
+            {% if order.delivery_fee > 0 %}
+                <p><span class="label">Taxa:</span> R$ {{ order.delivery_fee }}</p>
+            {% endif %}
+            <p class="total">TOTAL: R$ {{ order.total }}</p>
+        </div>
+
+        <p>
+            <span class="label">Pagamento:</span>
+            <span class="payment-badge {% if order.payment_status == 'PENDING' %}pending{% elif order.payment_status == 'RECEIPT_RECEIVED' %}received{% else %}confirmed{% endif %}">
+                {{ order.get_payment_status_display }}
+            </span>
+        </p>
+    </div>
+
+    <div class="order-card-actions">
+        {% if order.payment_status == 'RECEIPT_RECEIVED' %}
+            <button class="btn btn-success btn-sm" onclick="confirmPayment({{ order.id }})">
+                Confirmar Pag.
+            </button>
+        {% endif %}
+
+        {% if order.status == 'NEW' %}
+            <button class="btn btn-warning btn-sm" onclick="updateOrderStatus({{ order.id }}, 'AWAITING_PAYMENT', 'Aguardando Pagamento')">
+                Aguardar Pag.
+            </button>
+        {% endif %}
+
+        {% if order.status == 'AWAITING_PAYMENT' or order.status == 'NEW' %}
+            <button class="btn btn-primary btn-sm" onclick="updateOrderStatus({{ order.id }}, 'PREPARING', 'Em Preparo')">
+                Em Preparo
+            </button>
+        {% endif %}
+
+        {% if order.status == 'PREPARING' %}
+            {% if order.order_type == 'DELIVERY' %}
+                <button class="btn btn-success btn-sm" onclick="updateOrderStatus({{ order.id }}, 'OUT_FOR_DELIVERY', 'Saiu para Entrega')">
+                    Saiu Entrega
+                </button>
+            {% else %}
+                <button class="btn btn-success btn-sm" onclick="updateOrderStatus({{ order.id }}, 'READY_FOR_PICKUP', 'Pronto Retirada')">
+                    Pronto Retirada
+                </button>
+            {% endif %}
+        {% endif %}
+
+        {% if order.status == 'OUT_FOR_DELIVERY' or order.status == 'READY_FOR_PICKUP' %}
+            <button class="btn btn-success btn-sm" onclick="completeOrder({{ order.id }})">
+                Finalizar
+            </button>
+        {% endif %}
+
+        {% if order.status != 'CANCELLED' and order.status != 'COMPLETED' %}
+            <button class="btn btn-danger btn-sm" onclick="cancelOrder({{ order.id }})">
+                Cancelar
+            </button>
+        {% endif %}
+    </div>
+</div>

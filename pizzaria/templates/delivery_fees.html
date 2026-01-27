@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+
+{% block title %}Taxas de Entrega - Pizzaria do Negao{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary" onclick="openFeeModal()">+ Novo Bairro</button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3>Taxas de Entrega por Bairro</h3>
+    </div>
+
+    {% if fees %}
+        {% for fee in fees %}
+        <div class="fee-row {% if not fee.active %}inactive{% endif %}">
+            <div class="fee-info">
+                <span class="neighborhood">{{ fee.neighborhood }}</span>
+                <span class="details">
+                    Taxa: R$ {{ fee.fee }} | Tempo estimado: {{ fee.estimated_time }} min
+                    {% if not fee.active %}| <span style="color: var(--accent-red);">Inativo</span>{% endif %}
+                </span>
+            </div>
+            <div>
+                <button class="btn btn-secondary btn-sm" onclick="editFee({{ fee.id }}, '{{ fee.neighborhood }}', '{{ fee.fee }}', {{ fee.estimated_time }}, {{ fee.active|yesno:'true,false' }})">Editar</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteFee({{ fee.id }})">Excluir</button>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="color: var(--text-secondary); text-align: center; padding: 40px;">
+            Nenhuma taxa de entrega cadastrada
+        </p>
+    {% endif %}
+</div>
+
+<!-- Modal de Taxa -->
+<div id="feeModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="feeModalTitle">Nova Taxa de Entrega</h3>
+            <button class="modal-close" onclick="closeFeeModal()">&times;</button>
+        </div>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" id="feeAction" value="create">
+            <input type="hidden" name="fee_id" id="feeId">
+
+            <div class="form-group">
+                <label>Bairro</label>
+                <input type="text" name="neighborhood" id="feeNeighborhood" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label>Taxa (R$)</label>
+                <input type="number" name="fee" id="feeFee" class="form-control" step="0.01" required>
+            </div>
+
+            <div class="form-group">
+                <label>Tempo Estimado (minutos)</label>
+                <input type="number" name="estimated_time" id="feeTime" class="form-control" value="60" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" name="active" id="feeActive" checked>
+                    Ativo
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Salvar</button>
+        </form>
+    </div>
+</div>
+
+<!-- Form de Delete oculto -->
+<form id="deleteFeeForm" method="post" style="display: none;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="delete">
+    <input type="hidden" name="fee_id" id="deleteFeeId">
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openFeeModal() {
+    document.getElementById('feeModalTitle').textContent = 'Nova Taxa de Entrega';
+    document.getElementById('feeAction').value = 'create';
+    document.getElementById('feeId').value = '';
+    document.getElementById('feeNeighborhood').value = '';
+    document.getElementById('feeFee').value = '';
+    document.getElementById('feeTime').value = '60';
+    document.getElementById('feeActive').checked = true;
+    document.getElementById('feeModal').classList.add('active');
+}
+
+function editFee(id, neighborhood, fee, time, active) {
+    document.getElementById('feeModalTitle').textContent = 'Editar Taxa de Entrega';
+    document.getElementById('feeAction').value = 'update';
+    document.getElementById('feeId').value = id;
+    document.getElementById('feeNeighborhood').value = neighborhood;
+    document.getElementById('feeFee').value = fee;
+    document.getElementById('feeTime').value = time;
+    document.getElementById('feeActive').checked = active;
+    document.getElementById('feeModal').classList.add('active');
+}
+
+function closeFeeModal() {
+    document.getElementById('feeModal').classList.remove('active');
+}
+
+function deleteFee(id) {
+    if (!confirm('Tem certeza que deseja excluir esta taxa?')) {
+        return;
+    }
+    document.getElementById('deleteFeeId').value = id;
+    document.getElementById('deleteFeeForm').submit();
+}
+</script>
+{% endblock %}
