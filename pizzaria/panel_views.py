@@ -394,6 +394,24 @@ def reject_payment(request):
 
 
 @login_required
+def order_counts(request):
+    """Retorna contagem de pedidos por status para polling."""
+    from django.utils import timezone
+    today = timezone.now().date()
+
+    counts = {
+        'new': Order.objects.filter(status='NEW', created_at__date=today).count(),
+        'awaiting_payment': Order.objects.filter(status='AWAITING_PAYMENT', created_at__date=today).count(),
+        'preparing': Order.objects.filter(status='PREPARING', created_at__date=today).count(),
+        'out_delivery': Order.objects.filter(
+            status__in=['OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'],
+            created_at__date=today
+        ).count(),
+    }
+    return JsonResponse(counts)
+
+
+@login_required
 @require_POST
 def product_action(request):
     """Acoes CRUD para produtos."""

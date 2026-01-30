@@ -105,51 +105,50 @@ A Pizzaria do Negão agradece a preferência! ❤️🍕"""
             if created:
                 self.stdout.write(f'  Pizza doce criada: {product.name}')
 
-        # Produtos - Bebidas
-        bebidas = [
-            {'name': 'Coca-Cola 1,5L', 'price': 12.00},
-            {'name': 'Tuchaua 2L', 'price': 10.00},
-            {'name': 'Pepsi 2L', 'price': 14.00},
-            {'name': 'Guaraná Antarctica 2L', 'price': 12.00},
-            {'name': 'Fanta Laranja 2L', 'price': 11.00},
-            {'name': 'Água Mineral 500ml', 'price': 4.00},
-        ]
+        # Produtos - Bebidas (só cria se não existir NENHUMA bebida)
+        # Isso evita sobrescrever alterações feitas no painel
+        bebidas_existentes = Product.objects.filter(category='BEBIDA').count()
+        if bebidas_existentes == 0:
+            bebidas = [
+                {'name': 'Coca-Cola 1,5L', 'price': 12.00},
+                {'name': 'Tuchaua 2L', 'price': 10.00},
+            ]
 
-        for bebida_data in bebidas:
-            product, created = Product.objects.get_or_create(
-                name=bebida_data['name'],
-                defaults={
-                    'price': bebida_data['price'],
-                    'category': 'BEBIDA',
-                    'active': True
-                }
-            )
-            if created:
-                self.stdout.write(f'  Bebida criada: {product.name}')
+            for bebida_data in bebidas:
+                product, created = Product.objects.get_or_create(
+                    name=bebida_data['name'],
+                    defaults={
+                        'price': bebida_data['price'],
+                        'category': 'BEBIDA',
+                        'active': True
+                    }
+                )
+                if created:
+                    self.stdout.write(f'  Bebida criada: {product.name}')
+        else:
+            self.stdout.write(f'  Bebidas ja existem ({bebidas_existentes}), nao alterando')
 
-        # Taxas de entrega por bairro
-        bairros = [
-            {'neighborhood': 'Centro', 'fee': 5.00, 'estimated_time': 30},
-            {'neighborhood': 'Jardim América', 'fee': 6.00, 'estimated_time': 35},
-            {'neighborhood': 'Vila Nova', 'fee': 7.00, 'estimated_time': 40},
-            {'neighborhood': 'Parque Industrial', 'fee': 8.00, 'estimated_time': 45},
-            {'neighborhood': 'Cohab', 'fee': 6.00, 'estimated_time': 35},
-            {'neighborhood': 'Jardim Europa', 'fee': 7.00, 'estimated_time': 40},
-            {'neighborhood': 'Vila Maria', 'fee': 5.50, 'estimated_time': 30},
-            {'neighborhood': 'Conjunto Habitacional', 'fee': 8.00, 'estimated_time': 50},
-        ]
+        # Taxas de entrega por bairro (só cria se não existir NENHUMA taxa)
+        taxas_existentes = DeliveryFee.objects.count()
+        if taxas_existentes == 0:
+            bairros = [
+                {'neighborhood': 'Centro', 'fee': 5.00, 'estimated_time': 30},
+                {'neighborhood': 'Jardim Europa', 'fee': 7.00, 'estimated_time': 40},
+            ]
 
-        for bairro_data in bairros:
-            fee, created = DeliveryFee.objects.get_or_create(
-                neighborhood=bairro_data['neighborhood'],
-                defaults={
-                    'fee': bairro_data['fee'],
-                    'estimated_time': bairro_data['estimated_time'],
-                    'active': True
-                }
-            )
-            if created:
-                self.stdout.write(f'  Taxa criada: {fee.neighborhood}')
+            for bairro_data in bairros:
+                fee, created = DeliveryFee.objects.get_or_create(
+                    neighborhood=bairro_data['neighborhood'],
+                    defaults={
+                        'fee': bairro_data['fee'],
+                        'estimated_time': bairro_data['estimated_time'],
+                        'active': True
+                    }
+                )
+                if created:
+                    self.stdout.write(f'  Taxa criada: {fee.neighborhood}')
+        else:
+            self.stdout.write(f'  Taxas ja existem ({taxas_existentes}), nao alterando')
 
         self.stdout.write(self.style.SUCCESS('\nDados iniciais configurados com sucesso!'))
         self.stdout.write(self.style.WARNING('\nCredenciais de acesso:'))

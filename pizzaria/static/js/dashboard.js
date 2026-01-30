@@ -48,30 +48,133 @@ if (window.location.pathname === '/' || window.location.pathname === '/dashboard
     }, 30000);
 }
 
-// Notification sound for new orders (optional)
+// Notification sound for new orders
 let lastOrderCount = 0;
+let lastAwaitingCount = 0;
 
-function checkNewOrders() {
-    const newOrdersBadge = document.querySelector('.kanban-column.new .badge');
-    if (newOrdersBadge) {
-        const currentCount = parseInt(newOrdersBadge.textContent) || 0;
-        if (currentCount > lastOrderCount && lastOrderCount > 0) {
-            // Play notification sound
-            try {
-                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleN0VV6bS8eKDQwA2pd/x55lLADmk2vXimkoAN6TY9+CZRAA3pNn34JlEAA==');
-                audio.play();
-            } catch (e) {
-                console.log('Sound notification not available');
-            }
+// Som de notificação mais audível (beep repetido)
+function playNotificationSound() {
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        function beep(frequency, duration, time) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            gainNode.gain.setValueAtTime(0.5, time);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, time + duration);
+            oscillator.start(time);
+            oscillator.stop(time + duration);
         }
-        lastOrderCount = currentCount;
+
+        // Toca 3 beeps
+        const now = audioContext.currentTime;
+        beep(800, 0.2, now);
+        beep(1000, 0.2, now + 0.25);
+        beep(800, 0.3, now + 0.5);
+    } catch (e) {
+        console.log('Sound notification not available:', e);
     }
 }
 
-// Initial check
+// Mostra alerta visual de novo pedido
+function showNewOrderAlert(count) {
+    // Remove alerta anterior se existir
+    const existingAlert = document.getElementById('newOrderAlert');
+    if (existingAlert) existingAlert.remove();
+
+    const alert = document.createElement('div');
+    alert.id = 'newOrderAlert';
+    alert.innerHTML = `
+        <div style="
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #ff5555, #ff79c6);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            z-index: 9999;
+            box-shadow: 0 4px 20px rgba(255,85,85,0.5);
+            animation: pulse 1s infinite;
+            cursor: pointer;
+        " onclick="this.parentElement.remove(); location.reload();">
+            🔔 NOVO PEDIDO! (${count} aguardando) - Clique para atualizar
+        </div>
+    `;
+    document.body.appendChild(alert);
+
+    // Remove após 10 segundos
+    setTimeout(() => {
+        if (document.getElementById('newOrderAlert')) {
+            document.getElementById('newOrderAlert').remove();
+        }
+    }, 10000);
+}
+
+function checkNewOrders() {
+    const newOrdersBadge = document.querySelector('.kanban-column.new .badge');
+    const awaitingBadge = document.querySelector('.kanban-column.awaiting .badge');
+
+    if (newOrdersBadge) {
+        const currentCount = parseInt(newOrdersBadge.textContent) || 0;
+        const awaitingCount = awaitingBadge ? parseInt(awaitingBadge.textContent) || 0 : 0;
+
+        // Verifica se há novos pedidos ou novos aguardando pagamento
+        if ((currentCount > lastOrderCount || awaitingCount > lastAwaitingCount) && (lastOrderCount > 0 || lastAwaitingCount > 0)) {
+            playNotificationSound();
+            showNewOrderAlert(currentCount + awaitingCount);
+        }
+
+        lastOrderCount = currentCount;
+        lastAwaitingCount = awaitingCount;
+    }
+}
+
+// Verifica novos pedidos a cada 15 segundos via AJAX
+function pollNewOrders() {
+    fetch('/ajax/order-counts/')
+        .then(response => response.json())
+        .then(data => {
+            const totalNew = (data.new || 0) + (data.awaiting_payment || 0);
+            const lastTotal = lastOrderCount + lastAwaitingCount;
+
+            if (totalNew > lastTotal && lastTotal > 0) {
+                playNotificationSound();
+                showNewOrderAlert(totalNew);
+                // Recarrega a página para mostrar novos pedidos
+                setTimeout(() => location.reload(), 2000);
+            }
+
+            lastOrderCount = data.new || 0;
+            lastAwaitingCount = data.awaiting_payment || 0;
+        })
+        .catch(err => console.log('Erro ao verificar pedidos:', err));
+}
+
+// Initial check e polling
 document.addEventListener('DOMContentLoaded', function() {
     checkNewOrders();
+    // Poll a cada 15 segundos
+    setInterval(pollNewOrders, 15000);
 });
+
+// Adiciona animação de pulse
+const pulseStyle = document.createElement('style');
+pulseStyle.textContent = `
+    @keyframes pulse {
+        0% { transform: translateX(-50%) scale(1); }
+        50% { transform: translateX(-50%) scale(1.05); }
+        100% { transform: translateX(-50%) scale(1); }
+    }
+`;
+document.head.appendChild(pulseStyle);
 
 // Format currency
 function formatCurrency(value) {

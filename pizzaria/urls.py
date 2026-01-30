@@ -44,4 +44,5 @@ urlpatterns = [
     path('ajax/confirm-payment/', panel_views.confirm_payment, name='confirm_payment'),
     path('ajax/reject-payment/', panel_views.reject_payment, name='reject_payment'),
     path('ajax/product-action/', panel_views.product_action, name='product_action'),
+    path('ajax/order-counts/', panel_views.order_counts, name='order_counts'),
 ]
