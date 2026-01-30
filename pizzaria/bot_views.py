@@ -174,6 +174,7 @@ def go_back_state(phone: str) -> tuple:
         "awaiting_payment_method": "Como vai ser o pagamento na entrega?\n1. Dinheiro\n2. Cartão (taxa de R$ 2,00)",
         "awaiting_change": "Vai precisar de troco? Se sim, pra quanto?",
         "awaiting_card_type": "Cartão: vai ser crédito ou débito?\n1. Crédito\n2. Débito",
+        "awaiting_half_or_full": "Como você quer?\n1. Meio a meio\n2. Duas pizzas inteiras",
     }
 
     return True, state_messages.get(previous["state"], "Qual e o seu pedido para hoje?") + get_help_text()
@@ -362,7 +363,7 @@ def get_drinks_menu() -> str:
 
 def is_half_half_request(text: str) -> bool:
     """Verifica se é um pedido de pizza meio a meio."""
-    text_lower = text.lower()
+    text_lower = text.lower().strip()
     half_patterns = ['meio', 'metade', '1/2', 'meia', 'meio a meio', 'metade metade']
 
     # Padrão "1 sabor e sabor2" também é meio a meio
@@ -379,6 +380,20 @@ def is_half_half_request(text: str) -> bool:
 def parse_half_half(text: str) -> tuple:
     """Tenta extrair os dois sabores de um pedido meio a meio."""
     text_lower = text.lower().strip()
+
+    # Padrão numérico: "1 e 2", "1,2", "1 e a pizza 2", "1 com 2"
+    # Retorna os números como string para serem convertidos em produtos depois
+    match = re.match(r'^(\d+)\s*[,e]\s*(\d+)$', text_lower)
+    if match:
+        return f"#{match.group(1)}", f"#{match.group(2)}"
+
+    match = re.match(r'^(\d+)\s+e\s+(?:a\s+)?(?:pizza\s+)?(\d+)$', text_lower)
+    if match:
+        return f"#{match.group(1)}", f"#{match.group(2)}"
+
+    match = re.match(r'^(\d+)\s+com\s+(\d+)$', text_lower)
+    if match:
+        return f"#{match.group(1)}", f"#{match.group(2)}"
 
     # Padrão: "calabresa com metade de baiana" ou "calabresa com metade baiana"
     match = re.match(r'^(.+?)\s+(?:com\s+metade\s+(?:de\s+)?|e\s+metade\s+(?:de\s+)?|metade\s+)(.+)$', text_lower)
@@ -427,6 +442,100 @@ def parse_half_half(text: str) -> tuple:
                     return sabor1, sabor2
 
     return None, None
+
+
+def resolve_half_half_by_number(sabor: str) -> Product:
+    """Se o sabor começa com #, é um número do cardápio. Converte para produto."""
+    if sabor.startswith('#'):
+        idx = int(sabor[1:])
+        pizzas = list(Product.objects.filter(category='PIZZA', active=True).order_by('name'))
+        if 1 <= idx <= len(pizzas):
+            return pizzas[idx - 1]
+        return None
+    return find_product_fuzzy(sabor)
+
+
+def parse_two_numbers(text: str) -> tuple:
+    """Extrai dois números de seleção do cardápio. Ex: '1 e 2', '1,2', '1 e a pizza 2'"""
+    text_lower = text.lower().strip()
+
+    # Padrão: "1 e 2", "1,2", "1 e a pizza 2", "1 com 2"
+    patterns = [
+        r'^(\d+)\s*[,]\s*(\d+)$',  # 1,2
+        r'^(\d+)\s+e\s+(\d+)$',  # 1 e 2
+        r'^(\d+)\s+e\s+(?:a\s+)?(?:pizza\s+)?(\d+)$',  # 1 e a pizza 2
+        r'^(\d+)\s+com\s+(\d+)$',  # 1 com 2
+    ]
+
+    for pattern in patterns:
+        match = re.match(pattern, text_lower)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+
+    return None
+
+
+def handle_half_or_full(phone: str, message: str) -> str:
+    """Trata escolha entre meio a meio ou duas pizzas inteiras."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    pizza1_id = state["data"].get("pizza1_id")
+    pizza2_id = state["data"].get("pizza2_id")
+    pizza1_name = state["data"].get("pizza1_name")
+    pizza2_name = state["data"].get("pizza2_name")
+
+    try:
+        pizza1 = Product.objects.get(id=pizza1_id)
+        pizza2 = Product.objects.get(id=pizza2_id)
+    except Product.DoesNotExist:
+        clear_conversation_state(phone)
+        return "Ops, algo deu errado 😅 Vamos recomeçar!"
+
+    # Meio a meio
+    if message_lower in ['1', 'meio', 'metade', 'meio a meio', 'meia']:
+        preco = max(pizza1.price, pizza2.price)
+        set_conversation_state(phone, "awaiting_observation", {
+            "order_type": "DELIVERY",
+            "current_item": {
+                "type": "half_half",
+                "pizza1_id": pizza1.id,
+                "pizza2_id": pizza2.id,
+                "pizza1_name": pizza1.name,
+                "pizza2_name": pizza2.name,
+                "price": float(preco)
+            },
+            "items": []
+        })
+        return (
+            f"Boa! 🍕 *Meio a Meio:*\n"
+            f"½ {pizza1.name} + ½ {pizza2.name}\n"
+            f"💰 R$ {preco:.2f}\n\n"
+            f"Alguma observação? (tirar cebola, sem tomate, etc)\n\n"
+            f"_Digite a observação ou 'não' se não tiver_"
+        )
+
+    # Duas pizzas inteiras
+    if message_lower in ['2', 'duas', 'inteira', 'inteiras', 'separadas', 'separado']:
+        items = [
+            {"type": "single", "product_id": pizza1.id, "quantity": 1, "price": float(pizza1.price)},
+            {"type": "single", "product_id": pizza2.id, "quantity": 1, "price": float(pizza2.price)}
+        ]
+        total = pizza1.price + pizza2.price
+        set_conversation_state(phone, "awaiting_more_items", {
+            "order_type": "DELIVERY",
+            "items": items
+        })
+        return (
+            f"Anotado! ✅\n\n"
+            f"• 1x *{pizza1.name}* - R$ {pizza1.price:.2f}\n"
+            f"• 1x *{pizza2.name}* - R$ {pizza2.price:.2f}\n"
+            f"💰 Subtotal: R$ {total:.2f}\n\n"
+            f"Quer mais alguma pizza?\n"
+            f"1️⃣ Quero mais\n"
+            f"2️⃣ Só isso"
+        )
+
+    return "Não entendi 😅 Digite 1 para meio a meio ou 2 para duas pizzas inteiras.\n\n_'voltar' | 'cancelar'_"
 
 
 def parse_multiple_pizzas(text: str) -> list:
@@ -492,6 +601,28 @@ def handle_welcome(phone: str, message: str, msg_type: str) -> str:
 
     if any(word in message_lower for word in ['ja sei', 'já sei', 'sei o que', 'quero pedir']):
         return "Beleza! Me fala o sabor da pizza que você quer 🍕\n\n_Dica: pode pedir meio a meio! Ex: 'meio calabresa meio mussarela'_"
+
+    # Verifica se é seleção numérica dupla (ex: "1 e 2", "1,2")
+    two_numbers = parse_two_numbers(message)
+    if two_numbers:
+        num1, num2 = two_numbers
+        pizzas = list(Product.objects.filter(category='PIZZA', active=True).order_by('name'))
+        if 1 <= num1 <= len(pizzas) and 1 <= num2 <= len(pizzas):
+            pizza1 = pizzas[num1 - 1]
+            pizza2 = pizzas[num2 - 1]
+            set_conversation_state(phone, "awaiting_half_or_full", {
+                "pizza1_id": pizza1.id,
+                "pizza2_id": pizza2.id,
+                "pizza1_name": pizza1.name,
+                "pizza2_name": pizza2.name,
+            })
+            return (
+                f"Você escolheu *{pizza1.name}* e *{pizza2.name}*\n\n"
+                f"Como você quer?\n\n"
+                f"1️⃣ *Meio a meio* (uma pizza com metade de cada)\n"
+                f"2️⃣ *Duas pizzas inteiras* (uma de cada sabor)\n\n"
+                f"_'voltar' | 'cancelar'_"
+            )
 
     # Verifica se é pedido de múltiplas pizzas (ex: "2 portuguesa e 4 queijo")
     multiple = parse_multiple_pizzas(message)
@@ -1813,6 +1944,9 @@ def bot_webhook(request):
 
     elif current_state == "awaiting_card_type":
         response = handle_card_type(phone, body)
+
+    elif current_state == "awaiting_half_or_full":
+        response = handle_half_or_full(phone, body)
 
     else:
         response = handle_welcome(phone, body, msg_type)
