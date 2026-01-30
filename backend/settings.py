@@ -15,7 +15,11 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
+# Railway automaticamente define RAILWAY_PUBLIC_DOMAIN
+RAILWAY_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', '')
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+if RAILWAY_DOMAIN:
+    ALLOWED_HOSTS.append(RAILWAY_DOMAIN)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -141,6 +145,14 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
     'CSRF_TRUSTED_ORIGINS',
     'http://localhost:3000,http://localhost:8000'
 ).split(',')
+
+# Adiciona dominio do Railway automaticamente
+if RAILWAY_DOMAIN:
+    railway_origin = f'https://{RAILWAY_DOMAIN}'
+    if railway_origin not in CORS_ALLOWED_ORIGINS:
+        CORS_ALLOWED_ORIGINS.append(railway_origin)
+    if railway_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(railway_origin)
 CSRF_COOKIE_SAMESITE = 'Lax'
 
 # Security settings for production

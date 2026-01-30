@@ -10,6 +10,9 @@ router.register(r'delivery-fees', views.DeliveryFeeViewSet)
 router.register(r'orders', views.OrderViewSet)
 
 urlpatterns = [
+    # Health check
+    path('api/health/', views.health_check, name='health_check'),
+
     # API REST
     path('api/', include(router.urls)),
     path('api/settings/', views.BusinessSettingsView.as_view(), name='api_settings'),

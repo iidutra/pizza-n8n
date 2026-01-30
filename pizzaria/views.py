@@ -1,11 +1,17 @@
 from django.db.models import Sum, Count, Avg, F
 from django.db.models.functions import ExtractHour
 from django.utils import timezone
+from django.http import JsonResponse
 from datetime import timedelta
 from rest_framework import viewsets, status
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+
+def health_check(request):
+    """Endpoint de health check para o Railway."""
+    return JsonResponse({'status': 'ok'})
 
 from .models import Customer, Product, DeliveryFee, Order, OrderItem, BusinessSettings
 from .serializers import (

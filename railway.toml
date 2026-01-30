@@ -1,0 +1,10 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "python manage.py migrate && python manage.py setup_initial_data && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 backend.wsgi:application"
+healthcheckPath = "/api/health/"
+healthcheckTimeout = 100
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
