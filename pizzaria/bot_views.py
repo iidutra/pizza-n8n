@@ -369,31 +369,62 @@ def is_half_half_request(text: str) -> bool:
     if re.match(r'^1\s+\w+.*\s+e\s+\w+', text_lower):
         return True
 
+    # Padrão "sabor com metade de sabor" ou "sabor e metade sabor"
+    if re.search(r'\w+\s+(com\s+metade|e\s+metade|metade\s+de|com\s+meia|e\s+meia)\s+\w+', text_lower):
+        return True
+
     return any(pattern in text_lower for pattern in half_patterns)
 
 
 def parse_half_half(text: str) -> tuple:
     """Tenta extrair os dois sabores de um pedido meio a meio."""
-    text_lower = text.lower()
+    text_lower = text.lower().strip()
+
+    # Padrão: "calabresa com metade de baiana" ou "calabresa com metade baiana"
+    match = re.match(r'^(.+?)\s+(?:com\s+metade\s+(?:de\s+)?|e\s+metade\s+(?:de\s+)?|metade\s+)(.+)$', text_lower)
+    if match:
+        sabor1 = match.group(1).strip()
+        sabor2 = match.group(2).strip()
+        # Limpa palavras extras
+        sabor1 = re.sub(r'^(meia|meio|metade)\s+', '', sabor1)
+        sabor2 = re.sub(r'^(meia|meio|metade|de)\s+', '', sabor2)
+        if sabor1 and sabor2:
+            return sabor1, sabor2
 
     # Padrão: "1 calabresa e bacon" -> meio a meio
     match = re.match(r'^1\s+(.+?)\s+e\s+(.+)$', text_lower)
     if match:
         return match.group(1).strip(), match.group(2).strip()
 
-    # Padrões comuns: "meio X meio Y", "metade X metade Y", "X e Y", "X / Y"
-    separators = [' e ', ' meio ', ' metade ', '/', ' com ']
+    # Padrão: "meio calabresa meio baiana" ou "metade X metade Y"
+    match = re.match(r'^(?:meio|meia|metade)\s+(.+?)\s+(?:meio|meia|metade)\s+(.+)$', text_lower)
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
 
+    # Padrão: "calabresa e baiana" (simples, sem meio/metade explícito mas com "e")
+    # Só usa se tiver exatamente 2 sabores separados por "e"
+    if ' e ' in text_lower and 'meio' not in text_lower and 'metade' not in text_lower:
+        parts = text_lower.split(' e ')
+        if len(parts) == 2:
+            sabor1 = parts[0].strip()
+            sabor2 = parts[1].strip()
+            # Verifica se ambos parecem sabores válidos (não são números ou palavras curtas)
+            if len(sabor1) > 2 and len(sabor2) > 2:
+                return sabor1, sabor2
+
+    # Padrões com separadores
+    separators = [' com ', '/']
     for sep in separators:
         if sep in text_lower:
             parts = text_lower.split(sep)
             if len(parts) >= 2:
                 sabor1 = parts[0].replace('meio', '').replace('metade', '').replace('1/2', '').strip()
-                sabor2 = parts[-1].replace('meio', '').replace('metade', '').replace('1/2', '').strip()
+                sabor2 = parts[-1].replace('meio', '').replace('metade', '').replace('1/2', '').replace('de ', '').strip()
                 # Remove números no início
                 sabor1 = re.sub(r'^\d+\s*', '', sabor1)
                 sabor2 = re.sub(r'^\d+\s*', '', sabor2)
-                return sabor1, sabor2
+                if sabor1 and sabor2:
+                    return sabor1, sabor2
 
     return None, None
 
