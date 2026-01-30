@@ -1463,22 +1463,45 @@ def handle_awaiting_address(phone: str, message: str) -> str:
     if len(message.strip()) < 10:
         return "Preciso do endereço completo 😅\nMe passa a rua, número e bairro!\n\n_'voltar' | 'sair'_"
 
-    # Tenta identificar o bairro no endereço
-    words = message.lower().split()
+    # Busca todos os bairros ativos
+    all_fees = DeliveryFee.objects.filter(active=True).order_by('neighborhood')
+    message_lower = message.lower()
     neighborhood = None
     fee_obj = None
 
-    for word in words:
-        fee_obj = find_neighborhood_fee(word)
-        if fee_obj:
-            neighborhood = fee_obj.neighborhood
+    # Primeiro tenta encontrar o nome completo do bairro no endereço
+    for fee in all_fees:
+        if fee.neighborhood.lower() in message_lower:
+            fee_obj = fee
+            neighborhood = fee.neighborhood
             break
 
+    # Se não encontrou, tenta por palavras individuais (busca fuzzy)
     if not neighborhood:
-        fee_obj = DeliveryFee.objects.filter(active=True).first()
-        neighborhood = fee_obj.neighborhood if fee_obj else "Centro"
+        words = message_lower.split()
+        for word in words:
+            if len(word) >= 3:  # Ignora palavras muito curtas
+                fee_obj = find_neighborhood_fee(word)
+                if fee_obj:
+                    neighborhood = fee_obj.neighborhood
+                    break
 
-    delivery_fee = fee_obj.fee if fee_obj else Decimal('5.00')
+    # Se ainda não encontrou o bairro, informa que não entrega na região
+    if not neighborhood or not fee_obj:
+        bairros_disponiveis = [f.neighborhood for f in all_fees]
+        if bairros_disponiveis:
+            bairros_lista = "\n".join([f"• {b}" for b in bairros_disponiveis])
+            return (
+                f"😕 *Não entregamos nessa região.*\n\n"
+                f"Bairros onde entregamos:\n{bairros_lista}\n\n"
+                f"Por favor, informe o endereço com um dos bairros acima.\n\n"
+                f"_Ou digite 'retirada' para buscar no local_\n"
+                f"_'voltar' | 'sair'_"
+            )
+        else:
+            return "Não há bairros cadastrados para entrega. Entre em contato pelo telefone."
+
+    delivery_fee = fee_obj.fee
 
     set_conversation_state(phone, "confirming_delivery", {
         "items": items,
