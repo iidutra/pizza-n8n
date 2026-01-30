@@ -170,7 +170,8 @@ def go_back_state(phone: str) -> tuple:
         "awaiting_address": "Confirme o endereco completo (rua, numero e bairro), por gentileza.",
         "confirming_delivery": "Confirma o pedido para ENTREGA?\n1. Sim, confirmar\n2. Nao, cancelar",
         "confirming_pickup": "Confirma o pedido para RETIRADA?\n1. Sim, confirmar\n2. Nao, cancelar",
-        "awaiting_receipt": "Aguardando comprovante de pagamento (foto).\nOu digite 'pagar na entrega' para pagar ao receber.",
+        "awaiting_payment_choice": "Como vai ser o pagamento?\n1. PIX\n2. Dinheiro\n3. Cartão Crédito\n4. Cartão Débito",
+        "awaiting_receipt": "Aguardando comprovante de pagamento (foto).",
         "awaiting_payment_method": "Como vai ser o pagamento na entrega?\n1. Dinheiro\n2. Cartão (taxa de R$ 2,00)",
         "awaiting_change": "Vai precisar de troco? Se sim, pra quanto?",
         "awaiting_card_type": "Cartão: vai ser crédito ou débito?\n1. Crédito\n2. Débito",
@@ -1567,17 +1568,16 @@ def handle_confirming_delivery(phone: str, message: str) -> str:
         order.calculate_totals()
         order.save()
 
-        set_conversation_state(phone, "awaiting_receipt", {"order_id": order.id})
-
-        settings_obj = BusinessSettings.get_settings()
+        set_conversation_state(phone, "awaiting_payment_choice", {"order_id": order.id})
 
         return (
             f"Pedido #{order.id} confirmado! ✅\n\n"
-            f"💰 *Pagamento via PIX:*\n"
-            f"Chave: *{settings_obj.pix_key}*\n"
-            f"Nome: {settings_obj.pix_name}\n\n"
-            f"Me manda o *comprovante* (foto) aqui pra eu liberar seu pedido! 📸\n\n"
-            f"_Ou se preferir, digita 'pagar na entrega'_"
+            f"💰 *Como vai ser o pagamento?*\n\n"
+            f"1️⃣ *PIX* (envia comprovante)\n"
+            f"2️⃣ *Dinheiro* (paga na entrega)\n"
+            f"3️⃣ *Cartão Crédito* (+R$ 2,00 taxa maquininha)\n"
+            f"4️⃣ *Cartão Débito* (+R$ 2,00 taxa maquininha)\n\n"
+            f"_'voltar' | 'cancelar'_"
         )
 
     if message_lower in ['2', 'nao', 'não', 'n', 'cancelar']:
@@ -1585,6 +1585,98 @@ def handle_confirming_delivery(phone: str, message: str) -> str:
         return "Sem problemas! Pedido cancelado. Qualquer coisa é só chamar! 👋"
 
     return "Digita 1 pra confirmar ou 2 pra cancelar 😊\n\n_'voltar' | 'sair'_"
+
+
+def handle_payment_choice(phone: str, message: str) -> str:
+    """Trata escolha da forma de pagamento."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    order_id = state["data"].get("order_id")
+
+    if not order_id:
+        clear_conversation_state(phone)
+        return "Ops, algo deu errado 😅 Faz um novo pedido aí!"
+
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        clear_conversation_state(phone)
+        return "Não achei esse pedido 🤔 Faz um novo aí!"
+
+    settings_obj = BusinessSettings.get_settings()
+
+    # 1. PIX
+    if message_lower in ['1', 'pix']:
+        order.payment_method = 'PIX'
+        order.save()
+        set_conversation_state(phone, "awaiting_receipt", {"order_id": order.id})
+        return (
+            f"Beleza! 💰 *Pagamento via PIX:*\n\n"
+            f"Chave: *{settings_obj.pix_key}*\n"
+            f"Nome: {settings_obj.pix_name}\n\n"
+            f"Me manda o *comprovante* (foto) aqui pra eu liberar seu pedido! 📸"
+        )
+
+    # 2. Dinheiro
+    if message_lower in ['2', 'dinheiro', 'cash']:
+        order.payment_method = 'CASH'
+        order.payment_status = 'PAY_ON_DELIVERY'
+        order.save()
+        set_conversation_state(phone, "awaiting_change", {"order_id": order.id})
+        return (
+            f"Beleza! 💵 *Pagamento em dinheiro na entrega.*\n\n"
+            f"Vai precisar de troco? Se sim, pra quanto?\n\n"
+            f"_Digite o valor (ex: 100) ou 'não' se não precisar_"
+        )
+
+    # 3. Cartão Crédito
+    if message_lower in ['3', 'credito', 'crédito', 'cartao credito', 'cartão crédito']:
+        order.payment_method = 'CREDIT'
+        order.payment_status = 'PAY_ON_DELIVERY'
+        order.card_fee = Decimal('2.00')
+        order.total = order.total + Decimal('2.00')
+        order.status = 'PREPARING'
+        order.save()
+        clear_conversation_state(phone)
+
+        return (
+            f"Pedido #{order.id} confirmado! ✅\n\n"
+            f"💳 *Pagamento: Cartão de Crédito*\n"
+            f"(+R$ 2,00 taxa maquininha)\n\n"
+            f"*Total: R$ {order.total:.2f}*\n\n"
+            f"Seu pedido já está sendo preparado! 🍕\n"
+            f"Tempo estimado: 50-70 minutos\n\n"
+            f"Obrigado pela preferência! 😊"
+        )
+
+    # 4. Cartão Débito
+    if message_lower in ['4', 'debito', 'débito', 'cartao debito', 'cartão débito']:
+        order.payment_method = 'DEBIT'
+        order.payment_status = 'PAY_ON_DELIVERY'
+        order.card_fee = Decimal('2.00')
+        order.total = order.total + Decimal('2.00')
+        order.status = 'PREPARING'
+        order.save()
+        clear_conversation_state(phone)
+
+        return (
+            f"Pedido #{order.id} confirmado! ✅\n\n"
+            f"💳 *Pagamento: Cartão de Débito*\n"
+            f"(+R$ 2,00 taxa maquininha)\n\n"
+            f"*Total: R$ {order.total:.2f}*\n\n"
+            f"Seu pedido já está sendo preparado! 🍕\n"
+            f"Tempo estimado: 50-70 minutos\n\n"
+            f"Obrigado pela preferência! 😊"
+        )
+
+    return (
+        "Não entendi 😅 Escolhe uma opção:\n\n"
+        "1️⃣ PIX\n"
+        "2️⃣ Dinheiro\n"
+        "3️⃣ Cartão Crédito\n"
+        "4️⃣ Cartão Débito\n\n"
+        "_'voltar' | 'cancelar'_"
+    )
 
 
 def handle_awaiting_receipt(phone: str, message: str, msg_type: str, media_url: str = None) -> str:
@@ -2091,6 +2183,9 @@ def bot_webhook(request):
 
     elif current_state == "confirming_pickup":
         response = handle_confirming_pickup(phone, body)
+
+    elif current_state == "awaiting_payment_choice":
+        response = handle_payment_choice(phone, body)
 
     elif current_state == "awaiting_receipt":
         response = handle_awaiting_receipt(phone, body, msg_type, media_url)
