@@ -303,6 +303,17 @@ def confirm_payment(request):
     order.status = 'PREPARING'
     order.save()
 
+    # Notifica o cliente que o pagamento foi confirmado
+    settings = BusinessSettings.get_settings()
+    message = (
+        f"Pagamento confirmado! ✅\n\n"
+        f"Seu pedido #{order.id} já está sendo preparado! 🍕👨‍🍳\n\n"
+        f"⏱️ Previsão de entrega: {settings.min_delivery_time} a {settings.max_delivery_time} minutos\n\n"
+        f"Quando sair pra entrega eu te aviso aqui!\n\n"
+        f"A {settings.business_name} agradece! ❤️"
+    )
+    send_whatsapp_message(order.customer.phone, message)
+
     return JsonResponse({
         'status': 'ok',
         'order_id': order.id,
@@ -325,9 +336,25 @@ def reject_payment(request):
     order.payment_status = 'PENDING'
     order.save()
 
+    # Restaura o estado da conversa para aguardar novo comprovante
+    from django.core.cache import cache
+    import json
+    phone = order.customer.phone
+    key = f"conversation:{phone}"
+    state = {
+        "state": "awaiting_receipt",
+        "data": {"order_id": order.id},
+        "history": []
+    }
+    cache.set(key, json.dumps(state), 3600)  # 1 hora
+
+    settings = BusinessSettings.get_settings()
     message = (
-        "Houve um problema com o comprovante enviado. "
-        "Por favor, envie novamente o comprovante de pagamento."
+        f"Opa! 😅 Não conseguimos verificar o comprovante enviado.\n\n"
+        f"Pode mandar novamente a foto do comprovante do PIX?\n\n"
+        f"Chave PIX: *{settings.pix_key}*\n"
+        f"Nome: {settings.pix_name}\n\n"
+        f"_Ou digite 'pagar na entrega' se preferir_"
     )
     send_whatsapp_message(order.customer.phone, message)
 

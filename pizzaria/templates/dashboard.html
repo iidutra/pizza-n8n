@@ -140,6 +140,33 @@ function confirmPayment(orderId) {
     });
 }
 
+function rejectPayment(orderId) {
+    if (!confirm('Rejeitar este comprovante? O cliente será notificado para enviar novamente.')) {
+        return;
+    }
+
+    fetch('/ajax/reject-payment/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ order_id: orderId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            location.reload();
+        } else {
+            alert('Erro ao rejeitar comprovante');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Erro ao rejeitar comprovante');
+    });
+}
+
 function cancelOrder(orderId) {
     if (!confirm('Tem certeza que deseja CANCELAR este pedido?')) {
         return;

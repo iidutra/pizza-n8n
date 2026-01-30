@@ -22,6 +22,7 @@ class Product(models.Model):
     """Produto do cardapio."""
     CATEGORY_CHOICES = [
         ('PIZZA', 'Pizza'),
+        ('PIZZA_DOCE', 'Pizza Doce'),
         ('BEBIDA', 'Bebida'),
         ('ADICIONAL', 'Adicional'),
     ]

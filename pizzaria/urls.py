@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/bot/message', bot_views.bot_webhook, name='bot_webhook_no_slash'),
     path('api/bot/send-status/', bot_views.send_status_update, name='send_status_update'),
     path('api/bot/send-status', bot_views.send_status_update, name='send_status_update_no_slash'),
+    path('api/bot/debug/', bot_views.debug_waha, name='debug_waha'),
 
     # Dashboard
     path('', panel_views.dashboard_view, name='dashboard'),

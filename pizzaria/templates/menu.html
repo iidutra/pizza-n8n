@@ -14,9 +14,26 @@
             <h3>Produtos</h3>
         </div>
 
-        <h4 style="color: var(--accent-pink); margin-bottom: 15px;">Pizzas</h4>
+        <h4 style="color: var(--accent-pink); margin-bottom: 15px;">Pizzas Salgadas</h4>
         {% for product in products %}
             {% if product.category == 'PIZZA' %}
+            <div class="product-card {% if not product.active %}inactive{% endif %}">
+                <div class="product-info">
+                    <h4>{{ product.name }}</h4>
+                    <span class="category">{{ product.get_category_display }}</span>
+                    <span class="price">R$ {{ product.price }}</span>
+                </div>
+                <div>
+                    <button class="btn btn-secondary btn-sm" onclick="editProduct({{ product.id }}, '{{ product.name }}', '{{ product.description }}', '{{ product.price }}', '{{ product.category }}', {{ product.active|yesno:'true,false' }})">Editar</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteProduct({{ product.id }})">Excluir</button>
+                </div>
+            </div>
+            {% endif %}
+        {% endfor %}
+
+        <h4 style="color: var(--accent-purple); margin: 20px 0 15px;">Pizzas Doces</h4>
+        {% for product in products %}
+            {% if product.category == 'PIZZA_DOCE' %}
             <div class="product-card {% if not product.active %}inactive{% endif %}">
                 <div class="product-info">
                     <h4>{{ product.name }}</h4>
@@ -138,7 +155,8 @@
             <div class="form-group">
                 <label>Categoria</label>
                 <select name="category" id="productCategory" class="form-control" required>
-                    <option value="PIZZA">Pizza</option>
+                    <option value="PIZZA">Pizza Salgada</option>
+                    <option value="PIZZA_DOCE">Pizza Doce</option>
                     <option value="BEBIDA">Bebida</option>
                     <option value="ADICIONAL">Adicional</option>
                 </select>

@@ -100,7 +100,7 @@ services:
       sh -c "python manage.py migrate &&
              python manage.py setup_initial_data &&
              python manage.py collectstatic --noinput &&
-             gunicorn --bind 0.0.0.0:8000 --workers 2 --timeout 120 backend.wsgi:application"
+             gunicorn --bind 0.0.0.0:8000 --workers 2 --timeout 120 --limit-request-field_size 16384 --limit-request-fields 200 backend.wsgi:application"
     environment:
       - TZ=America/Sao_Paulo
       - DEBUG=True

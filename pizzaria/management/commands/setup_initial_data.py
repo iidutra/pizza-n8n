@@ -16,34 +16,60 @@ class Command(BaseCommand):
         else:
             self.stdout.write('Superusuario ja existe')
 
+        # Texto da promocao
+        promo_text = """🍕 Pizzaria do Negão 🍕
+
+Chegou a promoção pra você matar a fome com sabor! 😋
+
+✅ Promoção: 2 Pizzas Grandes por apenas R$ 55,00
+🚗 Delivery ou 🛍️ Retirada
+📍 Taxa de entrega conforme o bairro
+
+📲 Peça agora no WhatsApp: (69) 9 9363-9552
+
+A Pizzaria do Negão agradece a preferência! ❤️🍕"""
+
         # Configuracoes do negocio
         settings, created = BusinessSettings.objects.get_or_create(
             pk=1,
             defaults={
-                'business_name': 'Pizzaria do Negao',
+                'business_name': 'Pizzaria do Negão',
                 'pix_key': '013.317.962-10',
                 'pix_name': 'Jefferson Pereira de Moura',
                 'opening_time': '18:00',
                 'closing_time': '23:59',
                 'min_delivery_time': 50,
                 'max_delivery_time': 70,
+                'promo_text': promo_text,
+                'promo_active': True,
             }
         )
         if created:
             self.stdout.write(self.style.SUCCESS('Configuracoes do negocio criadas'))
         else:
-            self.stdout.write('Configuracoes ja existem')
+            # Atualiza promoção se já existe
+            settings.promo_text = promo_text
+            settings.promo_active = True
+            settings.save()
+            self.stdout.write(self.style.SUCCESS('Promocao atualizada!'))
 
-        # Produtos - Pizzas
+        # Produtos - Pizzas (conforme cardápio da imagem)
         pizzas = [
-            {'name': 'Pizza Calabresa', 'description': 'Molho, mussarela, calabresa e cebola', 'price': 35.00},
-            {'name': 'Pizza Frango com Catupiry', 'description': 'Molho, mussarela, frango desfiado e catupiry', 'price': 38.00},
-            {'name': 'Pizza Portuguesa', 'description': 'Molho, mussarela, presunto, ovo, cebola, azeitona e ervilha', 'price': 40.00},
-            {'name': 'Pizza Marguerita', 'description': 'Molho, mussarela, tomate e manjericao', 'price': 35.00},
-            {'name': 'Pizza Quatro Queijos', 'description': 'Molho, mussarela, provolone, parmesao e gorgonzola', 'price': 42.00},
-            {'name': 'Pizza Bacon', 'description': 'Molho, mussarela e bacon crocante', 'price': 38.00},
-            {'name': 'Pizza Pepperoni', 'description': 'Molho, mussarela e pepperoni', 'price': 40.00},
-            {'name': 'Pizza Mussarela', 'description': 'Molho e mussarela', 'price': 30.00},
+            {'name': 'Pizza Mussarela', 'description': 'Molho, mussarela, tomate e orégano', 'price': 30.00},
+            {'name': 'Pizza Calabresa', 'description': 'Molho, mussarela, calabresa, cebola e orégano', 'price': 35.00},
+            {'name': 'Pizza Frango com Catupiry', 'description': 'Molho, mussarela, frango, catupiry e orégano', 'price': 38.00},
+            {'name': 'Pizza Frango com Cheddar', 'description': 'Molho, mussarela, frango, cheddar e orégano', 'price': 38.00},
+            {'name': 'Pizza Frango com Milho', 'description': 'Molho, mussarela, frango, milho e orégano', 'price': 38.00},
+            {'name': 'Pizza Calabresa com Catupiry', 'description': 'Molho, mussarela, calabresa, catupiry e orégano', 'price': 38.00},
+            {'name': 'Pizza Atum', 'description': 'Molho, mussarela, atum, cebola e orégano', 'price': 40.00},
+            {'name': 'Pizza Palmito', 'description': 'Molho, mussarela, palmito, tomate e orégano', 'price': 38.00},
+            {'name': 'Pizza Francesa', 'description': 'Molho, mussarela, presuntado, catupiry e orégano', 'price': 38.00},
+            {'name': 'Pizza Baiana', 'description': 'Molho, mussarela, calabresa, pimenta calabresa e orégano', 'price': 38.00},
+            {'name': 'Pizza Mexicana', 'description': 'Molho, mussarela, calabresa, pimenta calabresa, bacon e orégano', 'price': 40.00},
+            {'name': 'Pizza Bacon', 'description': 'Molho, mussarela, bacon, tomate e orégano', 'price': 38.00},
+            {'name': 'Pizza Bauru', 'description': 'Molho, presunto, mussarela, tomate e orégano', 'price': 40.00},
+            {'name': 'Pizza Portuguesa', 'description': 'Molho, presunto, mussarela, milho, tomate, pimentão, calabresa e orégano', 'price': 40.00},
+            {'name': 'Pizza 4 Queijos', 'description': 'Molho, mussarela, cheddar, catupiry, parmesão e orégano', 'price': 42.00},
         ]
 
         for pizza_data in pizzas:
@@ -59,14 +85,34 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(f'  Pizza criada: {product.name}')
 
+        # Produtos - Pizzas Doces (conforme cardápio da imagem)
+        pizzas_doces = [
+            {'name': 'Pizza Brigadeiro', 'description': 'Molho, chocolate ao leite e granulado', 'price': 40.00},
+            {'name': 'Pizza Prestígio', 'description': 'Molho, chocolate ao leite e coco ralado', 'price': 40.00},
+            {'name': 'Pizza Banana com Canela', 'description': 'Molho, banana, canela e leite condensado', 'price': 40.00},
+        ]
+
+        for doce_data in pizzas_doces:
+            product, created = Product.objects.get_or_create(
+                name=doce_data['name'],
+                defaults={
+                    'description': doce_data['description'],
+                    'price': doce_data['price'],
+                    'category': 'PIZZA_DOCE',
+                    'active': True
+                }
+            )
+            if created:
+                self.stdout.write(f'  Pizza doce criada: {product.name}')
+
         # Produtos - Bebidas
         bebidas = [
             {'name': 'Coca-Cola 1,5L', 'price': 12.00},
             {'name': 'Tuchaua 2L', 'price': 10.00},
             {'name': 'Pepsi 2L', 'price': 14.00},
-            {'name': 'Guarana Antarctica 2L', 'price': 12.00},
+            {'name': 'Guaraná Antarctica 2L', 'price': 12.00},
             {'name': 'Fanta Laranja 2L', 'price': 11.00},
-            {'name': 'Agua Mineral 500ml', 'price': 4.00},
+            {'name': 'Água Mineral 500ml', 'price': 4.00},
         ]
 
         for bebida_data in bebidas:
@@ -84,7 +130,7 @@ class Command(BaseCommand):
         # Taxas de entrega por bairro
         bairros = [
             {'neighborhood': 'Centro', 'fee': 5.00, 'estimated_time': 30},
-            {'neighborhood': 'Jardim America', 'fee': 6.00, 'estimated_time': 35},
+            {'neighborhood': 'Jardim América', 'fee': 6.00, 'estimated_time': 35},
             {'neighborhood': 'Vila Nova', 'fee': 7.00, 'estimated_time': 40},
             {'neighborhood': 'Parque Industrial', 'fee': 8.00, 'estimated_time': 45},
             {'neighborhood': 'Cohab', 'fee': 6.00, 'estimated_time': 35},

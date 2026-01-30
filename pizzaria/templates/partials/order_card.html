@@ -51,8 +51,16 @@
 
     <div class="order-card-actions">
         {% if order.payment_status == 'RECEIPT_RECEIVED' %}
+            {% if order.payment_receipt %}
+                <a href="{{ order.payment_receipt.url }}" target="_blank" class="btn btn-secondary btn-sm">
+                    Ver Comprovante
+                </a>
+            {% endif %}
             <button class="btn btn-success btn-sm" onclick="confirmPayment({{ order.id }})">
-                Confirmar Pag.
+                Aprovar
+            </button>
+            <button class="btn btn-warning btn-sm" onclick="rejectPayment({{ order.id }})">
+                Rejeitar
             </button>
         {% endif %}
 
