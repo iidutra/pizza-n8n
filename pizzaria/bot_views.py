@@ -337,6 +337,11 @@ def find_neighborhood_fee(neighborhood: str) -> DeliveryFee:
     """Encontra taxa de entrega pelo bairro."""
     neighborhood = neighborhood.lower().strip()
 
+    # Ignora palavras muito curtas (menos de 4 caracteres)
+    if len(neighborhood) < 4:
+        return None
+
+    # Busca exata primeiro
     exact = DeliveryFee.objects.filter(
         neighborhood__iexact=neighborhood,
         active=True
@@ -344,16 +349,24 @@ def find_neighborhood_fee(neighborhood: str) -> DeliveryFee:
     if exact:
         return exact
 
+    # Busca se o nome do bairro contém a palavra (ou vice-versa)
     fees = DeliveryFee.objects.filter(active=True)
-    fee_names = [(f.neighborhood.lower(), f) for f in fees]
+    for fee in fees:
+        fee_name = fee.neighborhood.lower()
+        # Verifica se um contém o outro (mínimo 4 caracteres)
+        if len(neighborhood) >= 4 and (neighborhood in fee_name or fee_name in neighborhood):
+            return fee
 
+    # Busca fuzzy apenas com threshold alto (85%) e ratio completo
+    fee_names = [(f.neighborhood.lower(), f) for f in fees]
     if fee_names:
         best_match = process.extractOne(
             neighborhood,
             [name for name, _ in fee_names],
-            scorer=fuzz.partial_ratio
+            scorer=fuzz.ratio  # Usa ratio completo, não partial
         )
-        if best_match and best_match[1] >= 70:
+        # Threshold alto de 85% para evitar falsos positivos
+        if best_match and best_match[1] >= 85:
             for name, fee in fee_names:
                 if name == best_match[0]:
                     return fee
