@@ -4,8 +4,6 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "python manage.py migrate && python manage.py setup_initial_data && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 2 --timeout 120 backend.wsgi:application"
-healthcheckPath = "/api/health/"
-healthcheckTimeout = 300
 numReplicas = 1
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 5
