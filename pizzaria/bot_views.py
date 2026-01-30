@@ -1959,10 +1959,21 @@ def bot_webhook(request):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     event = data.get('event')
-    if event != 'message':
-        return JsonResponse({"status": "ignored"})
+
+    # Ignora eventos que não são mensagens novas
+    # 'message' = mensagem nova, 'message.any' pode incluir sincronização
+    if event not in ['message', 'message.any']:
+        return JsonResponse({"status": "ignored", "reason": f"event_{event}"})
+
+    # Se for message.any, verifica se é mensagem realmente nova
+    if event == 'message.any':
+        logger.info("Evento message.any recebido - verificando se é mensagem nova")
 
     payload = data.get('payload', {})
+
+    # Ignora se for mensagem de status/broadcast do WhatsApp
+    if payload.get('isStatus') or payload.get('broadcast'):
+        return JsonResponse({"status": "ignored", "reason": "status_or_broadcast"})
 
     # DEBUG: Log do payload completo para identificar campos
     logger.info(f"DEBUG PAYLOAD: from={payload.get('from')} | participant={payload.get('participant')} | notifyName={payload.get('notifyName')}")
@@ -1976,6 +1987,17 @@ def bot_webhook(request):
 
     if payload.get('fromMe', False):
         return JsonResponse({"status": "ignored"})
+
+    # IMPORTANTE: Ignora mensagens antigas (mais de 60 segundos)
+    # Isso evita que mensagens de sincronização do WAHA disparem respostas em massa
+    timestamp = payload.get('timestamp')
+    if timestamp:
+        import time
+        current_time = int(time.time())
+        message_age = current_time - int(timestamp)
+        if message_age > 60:  # Ignora mensagens com mais de 60 segundos
+            logger.info(f"Mensagem antiga ignorada: {message_age}s atrás")
+            return JsonResponse({"status": "ignored", "reason": "old_message"})
 
     # Extrai o número de telefone corretamente
     phone = extract_phone_number(payload)
