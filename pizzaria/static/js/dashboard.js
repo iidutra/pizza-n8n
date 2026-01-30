@@ -72,15 +72,15 @@ document.addEventListener('click', initAudio, { once: true });
 document.addEventListener('touchstart', initAudio, { once: true });
 document.addEventListener('keydown', initAudio, { once: true });
 
-// Clique no sininho apenas toca som de teste
+// Clique no sininho ativa notificações
 function toggleNotifications() {
     initAudio();
     requestNotificationPermission();
 
-    // Toca som de teste
+    // Toca som e avisa
     setTimeout(() => {
         playNotificationSound(true);
-        showToast('Som de teste! Quando chegar pedido vai tocar assim 🔔', 'success');
+        showToast('Notificações ativadas! Você será avisado quando chegar pedido 🔔', 'success');
     }, 100);
 }
 
@@ -91,10 +91,10 @@ function updateBellStatus() {
 
     if (audioEnabled) {
         bell.classList.add('active');
-        bell.title = 'Som ativado! Clique para testar';
+        bell.title = 'Avisos ativados! Você será notificado de novos pedidos';
     } else {
         bell.classList.remove('active');
-        bell.title = 'Clique em qualquer lugar para ativar o som';
+        bell.title = 'Clique para ativar avisos de novos pedidos';
     }
 }
 
@@ -301,7 +301,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Mostra aviso se áudio não estiver habilitado
     setTimeout(() => {
         if (!audioEnabled) {
-            showToast('Clique em qualquer lugar para ativar o som de notificação', 'info');
+            showToast('Clique no 🔔 para ativar avisos de novos pedidos', 'info');
         }
     }, 2000);
 });
