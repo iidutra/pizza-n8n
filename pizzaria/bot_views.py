@@ -227,13 +227,15 @@ def get_or_create_customer(phone: str, name: str = None) -> Customer:
 
 def find_product_fuzzy(text: str) -> Product:
     """Encontra produto por correspondencia fuzzy."""
+    original_text = text
     text = text.lower().strip()
+    logger.info(f"DEBUG find_product_fuzzy: original={repr(original_text)}, after_strip={repr(text)}, isdigit={text.isdigit()}")
 
     # Se é um número, busca direto pelo índice do cardápio (só pizzas salgadas)
     if text.isdigit():
         idx = int(text)
         pizzas = list(Product.objects.filter(category='PIZZA', active=True).order_by('name'))
-        logger.info(f"DEBUG find_product_fuzzy: numero={idx}, total_pizzas={len(pizzas)}")
+        logger.info(f"DEBUG find_product_fuzzy: numero={idx}, total_pizzas={len(pizzas)}, pizzas={[p.name for p in pizzas[:5]]}")
         if 1 <= idx <= len(pizzas):
             return pizzas[idx - 1]
         logger.warning(f"DEBUG: Numero {idx} fora do range 1-{len(pizzas)}")
@@ -1073,7 +1075,7 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
     """Trata seleção da segunda pizza da promoção."""
     state = get_conversation_state(phone)
     pizza_1_id = state["data"].get("promo_pizza_1")
-    logger.info(f"DEBUG handle_promo_pizza_2: message='{message}', pizza_1_id={pizza_1_id}")
+    logger.info(f"DEBUG handle_promo_pizza_2: message={repr(message)}, isdigit={message.strip().isdigit()}, pizza_1_id={pizza_1_id}")
 
     product = find_product_fuzzy(message)
     if not product:
