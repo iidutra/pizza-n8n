@@ -60,18 +60,67 @@ function initAudio() {
     try {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         audioEnabled = true;
-        console.log('Audio inicializado com sucesso');
+        updateBellStatus();
+        console.log('Audio habilitado - som vai tocar quando chegar pedido');
     } catch (e) {
         console.log('Erro ao inicializar audio:', e);
     }
 }
 
-// Habilita audio no primeiro clique/toque na página
+// Habilita audio no primeiro clique/toque em QUALQUER lugar da página
 document.addEventListener('click', initAudio, { once: true });
 document.addEventListener('touchstart', initAudio, { once: true });
+document.addEventListener('keydown', initAudio, { once: true });
+
+// Clique no sininho apenas toca som de teste
+function toggleNotifications() {
+    initAudio();
+    requestNotificationPermission();
+
+    // Toca som de teste
+    setTimeout(() => {
+        playNotificationSound(true);
+        showToast('Som de teste! Quando chegar pedido vai tocar assim 🔔', 'success');
+    }, 100);
+}
+
+// Atualiza visual do sininho
+function updateBellStatus() {
+    const bell = document.getElementById('notificationBell');
+    if (!bell) return;
+
+    if (audioEnabled) {
+        bell.classList.add('active');
+        bell.title = 'Som ativado! Clique para testar';
+    } else {
+        bell.classList.remove('active');
+        bell.title = 'Clique em qualquer lugar para ativar o som';
+    }
+}
+
+// Atualiza badge do sininho com contagem
+function updateBellBadge(count) {
+    const badge = document.getElementById('bellBadge');
+    const bell = document.getElementById('notificationBell');
+    if (!badge || !bell) return;
+
+    if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'block';
+        bell.classList.add('ringing');
+
+        // Para de balançar depois de 3 segundos
+        setTimeout(() => {
+            bell.classList.remove('ringing');
+        }, 3000);
+    } else {
+        badge.style.display = 'none';
+        bell.classList.remove('ringing');
+    }
+}
 
 // Som de notificação mais audível (beep repetido)
-function playNotificationSound() {
+function playNotificationSound(force = false) {
     // Tenta usar AudioContext
     if (audioContext && audioEnabled) {
         try {
@@ -87,21 +136,25 @@ function playNotificationSound() {
                 gainNode.connect(audioContext.destination);
                 oscillator.frequency.value = frequency;
                 oscillator.type = 'sine';
-                gainNode.gain.setValueAtTime(0.5, time);
+                gainNode.gain.setValueAtTime(0.8, time);  // Volume mais alto
                 gainNode.gain.exponentialRampToValueAtTime(0.01, time + duration);
                 oscillator.start(time);
                 oscillator.stop(time + duration);
             }
 
-            // Toca 3 beeps
+            // Toca 5 beeps mais intensos
             const now = audioContext.currentTime;
-            beep(800, 0.2, now);
-            beep(1000, 0.2, now + 0.25);
-            beep(800, 0.3, now + 0.5);
-            console.log('Som tocado com sucesso');
+            beep(880, 0.15, now);
+            beep(988, 0.15, now + 0.2);
+            beep(880, 0.15, now + 0.4);
+            beep(988, 0.15, now + 0.6);
+            beep(1047, 0.3, now + 0.8);
+            console.log('Som tocado!');
         } catch (e) {
             console.log('Erro ao tocar som:', e);
         }
+    } else {
+        console.log('Audio não habilitado ainda - clique na página para ativar');
     }
 
     // Também envia notificação do navegador se permitido
@@ -110,6 +163,7 @@ function playNotificationSound() {
             new Notification('🍕 Novo Pedido!', {
                 body: 'Um novo pedido chegou na pizzaria!',
                 icon: '/static/img/pizza-icon.png',
+                tag: 'new-order',
                 requireInteraction: true
             });
         } catch (e) {
@@ -165,65 +219,6 @@ function showNewOrderAlert(count) {
     }, 10000);
 }
 
-// Mostra banner para habilitar notificações
-function showNotificationBanner() {
-    if (localStorage.getItem('notificationBannerDismissed')) return;
-    if (audioEnabled && Notification.permission === 'granted') return;
-
-    const banner = document.createElement('div');
-    banner.id = 'notificationBanner';
-    banner.innerHTML = `
-        <div style="
-            position: fixed;
-            bottom: 80px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #6272a4;
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            z-index: 9998;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        ">
-            <span>🔔 Clique aqui para ativar notificações de novos pedidos</span>
-            <button onclick="enableNotifications()" style="
-                background: #50fa7b;
-                color: #282a36;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 5px;
-                cursor: pointer;
-                font-weight: bold;
-            ">Ativar</button>
-            <button onclick="dismissNotificationBanner()" style="
-                background: transparent;
-                color: white;
-                border: none;
-                cursor: pointer;
-                font-size: 1.2rem;
-            ">&times;</button>
-        </div>
-    `;
-    document.body.appendChild(banner);
-}
-
-function enableNotifications() {
-    initAudio();
-    requestNotificationPermission();
-    playNotificationSound(); // Toca um som de teste
-    dismissNotificationBanner();
-}
-
-function dismissNotificationBanner() {
-    const banner = document.getElementById('notificationBanner');
-    if (banner) banner.remove();
-    localStorage.setItem('notificationBannerDismissed', 'true');
-}
-
 function checkNewOrders() {
     const newOrdersBadge = document.querySelector('.kanban-column.new .badge');
     const awaitingBadge = document.querySelector('.kanban-column.awaiting .badge');
@@ -231,6 +226,10 @@ function checkNewOrders() {
     if (newOrdersBadge) {
         const currentCount = parseInt(newOrdersBadge.textContent) || 0;
         const awaitingCount = awaitingBadge ? parseInt(awaitingBadge.textContent) || 0 : 0;
+        const totalCount = currentCount + awaitingCount;
+
+        // Atualiza badge do sininho
+        updateBellBadge(totalCount);
 
         // Na primeira carga, apenas salva os valores
         if (lastOrderCount === -1) {
@@ -242,7 +241,7 @@ function checkNewOrders() {
         // Verifica se há novos pedidos ou novos aguardando pagamento
         if (currentCount > lastOrderCount || awaitingCount > lastAwaitingCount) {
             playNotificationSound();
-            showNewOrderAlert(currentCount + awaitingCount);
+            showNewOrderAlert(totalCount);
         }
 
         lastOrderCount = currentCount;
@@ -258,6 +257,9 @@ function pollNewOrders() {
             const currentNew = data.new || 0;
             const currentAwaiting = data.awaiting_payment || 0;
             const totalNew = currentNew + currentAwaiting;
+
+            // Atualiza badge do sininho
+            updateBellBadge(totalNew);
 
             // Na primeira carga, apenas salva os valores
             if (lastOrderCount === -1) {
@@ -284,14 +286,24 @@ function pollNewOrders() {
 
 // Initial check e polling
 document.addEventListener('DOMContentLoaded', function() {
+    // Atualiza visual do sininho
+    updateBellStatus();
+
+    // Carrega contagem inicial
     checkNewOrders();
+
+    // Pede permissão de notificação automaticamente
     requestNotificationPermission();
 
-    // Mostra banner se notificações não estão ativadas
-    setTimeout(showNotificationBanner, 2000);
+    // Poll a cada 10 segundos para detectar novos pedidos mais rápido
+    setInterval(pollNewOrders, 10000);
 
-    // Poll a cada 15 segundos
-    setInterval(pollNewOrders, 15000);
+    // Mostra aviso se áudio não estiver habilitado
+    setTimeout(() => {
+        if (!audioEnabled) {
+            showToast('Clique em qualquer lugar para ativar o som de notificação', 'info');
+        }
+    }, 2000);
 });
 
 // Adiciona animação de pulse

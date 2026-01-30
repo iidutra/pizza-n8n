@@ -94,6 +94,11 @@
             <header class="header">
                 <h2>{{ page_title|default:"Dashboard" }}</h2>
                 <div class="header-actions">
+                    <!-- Sininho de notificação -->
+                    <div id="notificationBell" class="notification-bell" onclick="toggleNotifications()" title="Clique para ativar notificações">
+                        <span class="bell-icon">🔔</span>
+                        <span id="bellBadge" class="bell-badge" style="display: none;">0</span>
+                    </div>
                     {% block header_actions %}{% endblock %}
                 </div>
             </header>

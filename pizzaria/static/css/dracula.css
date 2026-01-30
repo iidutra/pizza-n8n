@@ -116,6 +116,68 @@ a:hover {
 .header-actions {
     display: flex;
     gap: 10px;
+    align-items: center;
+}
+
+/* Notification Bell */
+.notification-bell {
+    position: relative;
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--bg-card);
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.notification-bell:hover {
+    background: var(--bg-hover);
+}
+
+.notification-bell .bell-icon {
+    font-size: 1.4rem;
+    transition: transform 0.3s;
+}
+
+.notification-bell.active .bell-icon {
+    color: var(--accent-green);
+}
+
+.notification-bell.ringing .bell-icon {
+    animation: ring 0.5s ease infinite;
+}
+
+.notification-bell .bell-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--accent-red);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 10px;
+    min-width: 18px;
+    text-align: center;
+}
+
+.notification-bell .bell-status {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.notification-bell.active .bell-status {
+    color: var(--accent-green);
+}
+
+@keyframes ring {
+    0% { transform: rotate(0); }
+    25% { transform: rotate(15deg); }
+    50% { transform: rotate(0); }
+    75% { transform: rotate(-15deg); }
+    100% { transform: rotate(0); }
 }
 
 /* Buttons */
