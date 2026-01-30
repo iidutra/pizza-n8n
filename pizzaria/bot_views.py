@@ -27,6 +27,10 @@ MESSAGE_DEDUP_TIMEOUT = 300  # 5 minutos para deduplicação
 SERVICE_START_TIME = time.time()
 STARTUP_GRACE_PERIOD = 60  # segundos
 
+# Endereço para retirada
+PICKUP_ADDRESS = "Rua Eudoxia de Barros, 6219 - Aponiã"
+PICKUP_MAPS_LINK = "https://www.google.com/maps/search/?api=1&query=Rua+Eudoxia+de+Barros+6219+Aponia+Porto+Velho"
+
 
 def get_help_text() -> str:
     """Retorna texto de ajuda com comandos disponíveis."""
@@ -1427,7 +1431,9 @@ def handle_awaiting_drink_pickup(phone: str, message: str) -> str:
         return (
             f"Beleza! Olha o resumo do seu pedido:\n\n"
             f"{summary}\n\n"
-            f"Tudo certo? Você vai *RETIRAR* aqui no local 🏪\n"
+            f"Tudo certo? Você vai *RETIRAR* aqui no local 🏪\n\n"
+            f"📍 *Endereço:* {PICKUP_ADDRESS}\n"
+            f"🗺️ {PICKUP_MAPS_LINK}\n\n"
             f"1️⃣ Confirmar pedido\n"
             f"2️⃣ Cancelar"
         )
@@ -1442,7 +1448,9 @@ def handle_awaiting_drink_pickup(phone: str, message: str) -> str:
             f"Boa! ✅ *{drink.name}* adicionado!\n\n"
             f"Olha o resumo do seu pedido:\n\n"
             f"{summary}\n\n"
-            f"Tudo certo? Você vai *RETIRAR* aqui no local 🏪\n"
+            f"Tudo certo? Você vai *RETIRAR* aqui no local 🏪\n\n"
+            f"📍 *Endereço:* {PICKUP_ADDRESS}\n"
+            f"🗺️ {PICKUP_MAPS_LINK}\n\n"
             f"1️⃣ Confirmar pedido\n"
             f"2️⃣ Cancelar"
         )
@@ -1517,6 +1525,8 @@ def handle_confirming_pickup(phone: str, message: str) -> str:
         return (
             f"Pedido confirmado! ✅🍕\n\n"
             f"Já tô preparando! Quando ficar pronto eu te aviso aqui, beleza?\n\n"
+            f"📍 *Retirar em:* {PICKUP_ADDRESS}\n"
+            f"🗺️ {PICKUP_MAPS_LINK}\n\n"
             f"A Pizzaria do Negão agradece! ❤️"
         )
 
