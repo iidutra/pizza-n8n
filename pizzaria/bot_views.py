@@ -171,6 +171,9 @@ def go_back_state(phone: str) -> tuple:
         "confirming_delivery": "Confirma o pedido para ENTREGA?\n1. Sim, confirmar\n2. Nao, cancelar",
         "confirming_pickup": "Confirma o pedido para RETIRADA?\n1. Sim, confirmar\n2. Nao, cancelar",
         "awaiting_receipt": "Aguardando comprovante de pagamento (foto).\nOu digite 'pagar na entrega' para pagar ao receber.",
+        "awaiting_payment_method": "Como vai ser o pagamento na entrega?\n1. Dinheiro\n2. Cartão (taxa de R$ 2,00)",
+        "awaiting_change": "Vai precisar de troco? Se sim, pra quanto?",
+        "awaiting_card_type": "Cartão: vai ser crédito ou débito?\n1. Crédito\n2. Débito",
     }
 
     return True, state_messages.get(previous["state"], "Qual e o seu pedido para hoje?") + get_help_text()
@@ -361,12 +364,23 @@ def is_half_half_request(text: str) -> bool:
     """Verifica se é um pedido de pizza meio a meio."""
     text_lower = text.lower()
     half_patterns = ['meio', 'metade', '1/2', 'meia', 'meio a meio', 'metade metade']
+
+    # Padrão "1 sabor e sabor2" também é meio a meio
+    if re.match(r'^1\s+\w+.*\s+e\s+\w+', text_lower):
+        return True
+
     return any(pattern in text_lower for pattern in half_patterns)
 
 
 def parse_half_half(text: str) -> tuple:
     """Tenta extrair os dois sabores de um pedido meio a meio."""
     text_lower = text.lower()
+
+    # Padrão: "1 calabresa e bacon" -> meio a meio
+    match = re.match(r'^1\s+(.+?)\s+e\s+(.+)$', text_lower)
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+
     # Padrões comuns: "meio X meio Y", "metade X metade Y", "X e Y", "X / Y"
     separators = [' e ', ' meio ', ' metade ', '/', ' com ']
 
@@ -376,9 +390,47 @@ def parse_half_half(text: str) -> tuple:
             if len(parts) >= 2:
                 sabor1 = parts[0].replace('meio', '').replace('metade', '').replace('1/2', '').strip()
                 sabor2 = parts[-1].replace('meio', '').replace('metade', '').replace('1/2', '').strip()
+                # Remove números no início
+                sabor1 = re.sub(r'^\d+\s*', '', sabor1)
+                sabor2 = re.sub(r'^\d+\s*', '', sabor2)
                 return sabor1, sabor2
 
     return None, None
+
+
+def parse_multiple_pizzas(text: str) -> list:
+    """
+    Tenta extrair múltiplas pizzas de um pedido.
+    Ex: "2 portuguesa e 4 queijo" -> [('portuguesa', 1), ('4 queijos', 1)]
+    Ex: "1 calabresa e bacon" -> meio a meio
+    """
+    text_lower = text.lower().strip()
+    pizzas = []
+
+    # Padrão: "2 portuguesa e 4 queijo" (duas pizzas diferentes)
+    # Ou: "1 calabresa, 1 portuguesa"
+    patterns = [
+        r'(\d+)\s+([a-záéíóúàâêôãõç\s]+?)(?:\s+e\s+|\s*,\s*)(\d+)\s+([a-záéíóúàâêôãõç\s]+)',  # "2 portuguesa e 4 queijo"
+    ]
+
+    for pattern in patterns:
+        match = re.match(pattern, text_lower)
+        if match:
+            qty1 = int(match.group(1))
+            sabor1 = match.group(2).strip()
+            qty2 = int(match.group(3))
+            sabor2 = match.group(4).strip()
+
+            product1 = find_product_fuzzy(sabor1)
+            product2 = find_product_fuzzy(sabor2)
+
+            if product1 and product2:
+                return [
+                    {'product': product1, 'quantity': qty1},
+                    {'product': product2, 'quantity': qty2}
+                ]
+
+    return None
 
 
 def handle_welcome(phone: str, message: str, msg_type: str) -> str:
@@ -409,6 +461,32 @@ def handle_welcome(phone: str, message: str, msg_type: str) -> str:
 
     if any(word in message_lower for word in ['ja sei', 'já sei', 'sei o que', 'quero pedir']):
         return "Beleza! Me fala o sabor da pizza que você quer 🍕\n\n_Dica: pode pedir meio a meio! Ex: 'meio calabresa meio mussarela'_"
+
+    # Verifica se é pedido de múltiplas pizzas (ex: "2 portuguesa e 4 queijo")
+    multiple = parse_multiple_pizzas(message)
+    if multiple:
+        items = []
+        response = "Anotado! ✅\n\n"
+        for item in multiple:
+            product = item['product']
+            qty = item['quantity']
+            items.append({
+                "type": "single",
+                "product_id": product.id,
+                "quantity": qty,
+                "price": float(product.price)
+            })
+            response += f"• {qty}x *{product.name}* - R$ {product.price * qty:.2f}\n"
+
+        set_conversation_state(phone, "awaiting_more_items", {
+            "order_type": "DELIVERY",
+            "items": items
+        })
+
+        response += f"\nQuer mais alguma pizza?\n"
+        response += f"1️⃣ Quero mais\n"
+        response += f"2️⃣ Só isso"
+        return response
 
     # Verifica se é pedido meio a meio
     if is_half_half_request(message):
@@ -1281,20 +1359,34 @@ def handle_awaiting_receipt(phone: str, message: str, msg_type: str, media_url: 
         )
 
     # Permite pagar na entrega
-    if any(word in message_lower for word in ['pagar na entrega', 'pago na entrega', 'na entrega', 'dinheiro', 'cartao', 'cartão']):
-        order.payment_status = 'PAY_ON_DELIVERY'
-        order.status = 'PREPARING'
-        order.save()
-
-        clear_conversation_state(phone)
-
-        settings_obj = BusinessSettings.get_settings()
+    if any(word in message_lower for word in ['pagar na entrega', 'pago na entrega', 'na entrega', 'entrega']):
+        set_conversation_state(phone, "awaiting_payment_method", {"order_id": order.id})
         return (
-            f"Beleza! Pedido #{order.id} confirmado! 💵\n\n"
-            f"Você vai pagar na entrega, ok?\n\n"
-            f"⏱️ Previsão de entrega: {settings_obj.min_delivery_time} a {settings_obj.max_delivery_time} minutos\n\n"
-            f"Quando sair pra entrega eu te aviso aqui!\n\n"
-            f"A Pizzaria do Negão agradece! ❤️"
+            f"Beleza! Como vai ser o pagamento na entrega?\n\n"
+            f"1️⃣ Dinheiro 💵\n"
+            f"2️⃣ Cartão 💳 (taxa de R$ 2,00 da maquininha)\n\n"
+            f"_'voltar' | 'cancelar'_"
+        )
+
+    # Pagamento em dinheiro
+    if any(word in message_lower for word in ['dinheiro', 'din', 'especie', 'espécie']):
+        set_conversation_state(phone, "awaiting_change", {"order_id": order.id})
+        return (
+            f"Pagamento em *dinheiro* 💵\n\n"
+            f"Vai precisar de troco? Se sim, pra quanto?\n\n"
+            f"_Ex: 'troco pra 100' ou 'não precisa'_"
+        )
+
+    # Pagamento em cartão
+    if any(word in message_lower for word in ['cartao', 'cartão', 'credito', 'crédito', 'debito', 'débito']):
+        set_conversation_state(phone, "awaiting_card_type", {"order_id": order.id})
+        return (
+            f"Pagamento em *cartão* 💳\n\n"
+            f"⚠️ Taxa de R$ 2,00 da maquininha\n\n"
+            f"Vai ser:\n"
+            f"1️⃣ Crédito\n"
+            f"2️⃣ Débito\n\n"
+            f"_'voltar' | 'cancelar'_"
         )
 
     # Opção de ver resumo do pedido
@@ -1310,6 +1402,129 @@ def handle_awaiting_receipt(phone: str, message: str, msg_type: str, media_url: 
         f"Pode mandar a foto aqui, ou se preferir:\n"
         f"• Digita *'pagar na entrega'* pra pagar quando chegar\n"
         f"• Digita *'cancelar'* se quiser desistir"
+    )
+
+
+def handle_payment_method(phone: str, message: str) -> str:
+    """Trata escolha de forma de pagamento na entrega."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    order_id = state["data"].get("order_id")
+
+    if message_lower in ['1', 'dinheiro', 'din', 'especie', 'espécie']:
+        set_conversation_state(phone, "awaiting_change", {"order_id": order_id})
+        return (
+            f"Pagamento em *dinheiro* 💵\n\n"
+            f"Vai precisar de troco? Se sim, pra quanto?\n\n"
+            f"_Ex: 'troco pra 100' ou 'não precisa'_"
+        )
+
+    if message_lower in ['2', 'cartao', 'cartão', 'card']:
+        set_conversation_state(phone, "awaiting_card_type", {"order_id": order_id})
+        return (
+            f"Pagamento em *cartão* 💳\n\n"
+            f"⚠️ Taxa de R$ 2,00 da maquininha\n\n"
+            f"Vai ser:\n"
+            f"1️⃣ Crédito\n"
+            f"2️⃣ Débito\n\n"
+            f"_'voltar' | 'cancelar'_"
+        )
+
+    return "Não entendi 😅 Digita 1 pra dinheiro ou 2 pra cartão!\n\n_'voltar' | 'cancelar'_"
+
+
+def handle_awaiting_change(phone: str, message: str) -> str:
+    """Trata informação sobre troco."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    order_id = state["data"].get("order_id")
+
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        clear_conversation_state(phone)
+        return "Ops, algo deu errado 😅 Faz um novo pedido aí!"
+
+    # Verifica se não precisa de troco
+    if any(word in message_lower for word in ['nao', 'não', 'n', 'nao precisa', 'não precisa', 'sem troco', 'tenho trocado']):
+        order.payment_status = 'PAY_ON_DELIVERY'
+        order.payment_method = 'CASH'
+        order.status = 'PREPARING'
+        order.save()
+
+        clear_conversation_state(phone)
+        settings_obj = BusinessSettings.get_settings()
+        return (
+            f"Beleza! Pedido #{order.id} confirmado! 💵\n\n"
+            f"Pagamento: *Dinheiro* (sem troco)\n\n"
+            f"⏱️ Previsão: {settings_obj.min_delivery_time} a {settings_obj.max_delivery_time} min\n\n"
+            f"Quando sair pra entrega eu te aviso aqui!\n\n"
+            f"A Pizzaria do Negão agradece! ❤️"
+        )
+
+    # Extrai valor do troco
+    import re
+    numbers = re.findall(r'\d+', message)
+    if numbers:
+        change_for = int(numbers[0])
+        order.payment_status = 'PAY_ON_DELIVERY'
+        order.payment_method = 'CASH'
+        order.change_for = Decimal(str(change_for))
+        order.status = 'PREPARING'
+        order.save()
+
+        clear_conversation_state(phone)
+        settings_obj = BusinessSettings.get_settings()
+        return (
+            f"Beleza! Pedido #{order.id} confirmado! 💵\n\n"
+            f"Pagamento: *Dinheiro*\n"
+            f"💰 Troco pra: R$ {change_for},00\n\n"
+            f"⏱️ Previsão: {settings_obj.min_delivery_time} a {settings_obj.max_delivery_time} min\n\n"
+            f"Quando sair pra entrega eu te aviso aqui!\n\n"
+            f"A Pizzaria do Negão agradece! ❤️"
+        )
+
+    return "Não entendi 😅 Me diz o valor pro troco (ex: 'troco pra 50') ou 'não precisa'"
+
+
+def handle_card_type(phone: str, message: str) -> str:
+    """Trata escolha de crédito ou débito."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    order_id = state["data"].get("order_id")
+
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        clear_conversation_state(phone)
+        return "Ops, algo deu errado 😅 Faz um novo pedido aí!"
+
+    card_type = None
+    if message_lower in ['1', 'credito', 'crédito', 'cred']:
+        card_type = 'CREDIT'
+        card_name = 'Crédito'
+    elif message_lower in ['2', 'debito', 'débito', 'deb']:
+        card_type = 'DEBIT'
+        card_name = 'Débito'
+    else:
+        return "Não entendi 😅 Digita 1 pra crédito ou 2 pra débito!\n\n_'voltar' | 'cancelar'_"
+
+    order.payment_status = 'PAY_ON_DELIVERY'
+    order.payment_method = card_type
+    order.status = 'PREPARING'
+    # Adiciona taxa da maquininha
+    order.card_fee = Decimal('2.00')
+    order.save()
+
+    clear_conversation_state(phone)
+    settings_obj = BusinessSettings.get_settings()
+    return (
+        f"Beleza! Pedido #{order.id} confirmado! 💳\n\n"
+        f"Pagamento: *Cartão {card_name}*\n"
+        f"⚠️ Taxa da maquininha: R$ 2,00\n\n"
+        f"⏱️ Previsão: {settings_obj.min_delivery_time} a {settings_obj.max_delivery_time} min\n\n"
+        f"Quando sair pra entrega eu te aviso aqui!\n\n"
+        f"A Pizzaria do Negão agradece! ❤️"
     )
 
 
@@ -1571,6 +1786,15 @@ def bot_webhook(request):
 
     elif current_state == "awaiting_receipt":
         response = handle_awaiting_receipt(phone, body, msg_type, media_url)
+
+    elif current_state == "awaiting_payment_method":
+        response = handle_payment_method(phone, body)
+
+    elif current_state == "awaiting_change":
+        response = handle_awaiting_change(phone, body)
+
+    elif current_state == "awaiting_card_type":
+        response = handle_card_type(phone, body)
 
     else:
         response = handle_welcome(phone, body, msg_type)

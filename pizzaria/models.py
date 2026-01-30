@@ -84,6 +84,13 @@ class Order(models.Model):
         ('PAY_ON_DELIVERY', 'Pagar na Entrega'),
     ]
 
+    PAYMENT_METHOD_CHOICES = [
+        ('PIX', 'Pix'),
+        ('CASH', 'Dinheiro'),
+        ('CREDIT', 'Cartão Crédito'),
+        ('DEBIT', 'Cartão Débito'),
+    ]
+
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='orders', verbose_name='Cliente')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NEW', verbose_name='Status')
     order_type = models.CharField(max_length=20, choices=ORDER_TYPE_CHOICES, default='DELIVERY', verbose_name='Tipo')
@@ -93,7 +100,10 @@ class Order(models.Model):
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Subtotal')
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Total')
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='PENDING', verbose_name='Status Pagamento')
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, blank=True, null=True, verbose_name='Forma de Pagamento')
     payment_receipt = models.ImageField(upload_to='receipts/', blank=True, verbose_name='Comprovante')
+    change_for = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Troco para')
+    card_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='Taxa Maquininha')
     notes = models.TextField(blank=True, verbose_name='Observacoes')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Criado em')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Atualizado em')
