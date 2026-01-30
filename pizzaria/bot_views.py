@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from decimal import Decimal
 
 from django.core.cache import cache
@@ -20,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 CONVERSATION_TIMEOUT = 3600  # 1 hora
 MESSAGE_DEDUP_TIMEOUT = 300  # 5 minutos para deduplicação
+
+# Período de graça após iniciar o serviço - ignora TODAS as mensagens por 60 segundos
+# Isso evita disparo em massa quando o WAHA sincroniza após deploy
+SERVICE_START_TIME = time.time()
+STARTUP_GRACE_PERIOD = 60  # segundos
 
 
 def get_help_text() -> str:
@@ -2057,6 +2063,13 @@ def bot_webhook(request):
     if event not in ['message', 'message.any']:
         return JsonResponse({"status": "ignored", "reason": f"event_{event}"})
 
+    # PERÍODO DE GRAÇA: Ignora TODAS as mensagens nos primeiros 60 segundos após iniciar
+    # Isso evita disparo em massa quando WAHA sincroniza após deploy
+    elapsed_since_start = time.time() - SERVICE_START_TIME
+    if elapsed_since_start < STARTUP_GRACE_PERIOD:
+        logger.warning(f"Mensagem ignorada - período de graça ({elapsed_since_start:.1f}s < {STARTUP_GRACE_PERIOD}s)")
+        return JsonResponse({"status": "ignored", "reason": "startup_grace_period"})
+
     # Se for message.any, verifica se é mensagem realmente nova
     if event == 'message.any':
         logger.info("Evento message.any recebido - verificando se é mensagem nova")
@@ -2081,7 +2094,6 @@ def bot_webhook(request):
         return JsonResponse({"status": "ignored"})
 
     # IMPORTANTE: Ignora mensagens antigas para evitar disparo em massa ao reconectar
-    import time
     current_time = int(time.time())
 
     # Tenta múltiplos campos de timestamp (WAHA usa diferentes formatos)
