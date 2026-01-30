@@ -33,9 +33,23 @@ def get_help_text() -> str:
     return "\n\n_Comandos: 'voltar' (etapa anterior) | 'cancelar' (desistir do pedido)_"
 
 
-def format_order_summary(items: list, delivery_fee: Decimal = None, order_type: str = 'DELIVERY', is_promo: bool = False) -> str:
+def format_order_summary(items: list, delivery_fee: Decimal = None, order_type: str = 'DELIVERY', is_promo: bool = False, customer_name: str = None, customer_phone: str = None) -> str:
     """Formata resumo do pedido."""
     summary = "*RESUMO DO PEDIDO*\n"
+
+    # Adiciona dados do cliente se fornecidos
+    if customer_name or customer_phone:
+        summary += "━━━━━━━━━━━━━━━━━━━━\n"
+        if customer_name:
+            summary += f"👤 *Cliente:* {customer_name}\n"
+        if customer_phone:
+            # Formata telefone para exibição
+            phone_display = customer_phone
+            if phone_display.startswith("55") and len(phone_display) >= 12:
+                phone_display = f"({phone_display[2:4]}) {phone_display[4:9]}-{phone_display[9:]}"
+            summary += f"📱 *Telefone:* {phone_display}\n"
+        summary += "━━━━━━━━━━━━━━━━━━━━\n"
+
     subtotal = Decimal('0.00')
 
     if is_promo:
@@ -1359,10 +1373,14 @@ def handle_awaiting_drink_pickup(phone: str, message: str) -> str:
     drinks = list(Product.objects.filter(category='BEBIDA', active=True).order_by('name'))
     no_drink_option = str(len(drinks) + 1)
 
+    # Busca dados do cliente
+    customer = Customer.objects.filter(phone=phone).first()
+    customer_name = customer.name if customer else None
+
     # Verifica se não quer bebida
     if message_lower in [no_drink_option, "nao", "não", "n", "nao obrigado", "não obrigado", "so pizza", "só pizza"]:
         set_conversation_state(phone, "confirming_pickup", {"items": items, "promo": is_promo})
-        summary = format_order_summary(items, order_type='PICKUP', is_promo=is_promo)
+        summary = format_order_summary(items, order_type='PICKUP', is_promo=is_promo, customer_name=customer_name, customer_phone=phone)
         return (
             f"Beleza! Olha o resumo do seu pedido:\n\n"
             f"{summary}\n\n"
@@ -1376,7 +1394,7 @@ def handle_awaiting_drink_pickup(phone: str, message: str) -> str:
     if drink:
         items.append({"product_id": drink.id, "quantity": 1})
         set_conversation_state(phone, "confirming_pickup", {"items": items, "promo": is_promo})
-        summary = format_order_summary(items, order_type='PICKUP', is_promo=is_promo)
+        summary = format_order_summary(items, order_type='PICKUP', is_promo=is_promo, customer_name=customer_name, customer_phone=phone)
         return (
             f"Boa! ✅ *{drink.name}* adicionado!\n\n"
             f"Olha o resumo do seu pedido:\n\n"
@@ -1524,7 +1542,11 @@ def handle_awaiting_address(phone: str, message: str) -> str:
         "promo": is_promo
     })
 
-    summary = format_order_summary(items, delivery_fee, order_type='DELIVERY', is_promo=is_promo)
+    # Busca dados do cliente
+    customer = Customer.objects.filter(phone=phone).first()
+    customer_name = customer.name if customer else None
+
+    summary = format_order_summary(items, delivery_fee, order_type='DELIVERY', is_promo=is_promo, customer_name=customer_name, customer_phone=phone)
 
     return (
         f"Beleza! Olha o resumo do seu pedido:\n\n"
@@ -1827,7 +1849,9 @@ def handle_awaiting_receipt(phone: str, message: str, msg_type: str, media_url: 
         items_data = []
         for item in order.items.all():
             items_data.append({"product_id": item.product.id, "quantity": item.quantity})
-        summary = format_order_summary(items_data, order.delivery_fee, order_type='DELIVERY')
+        customer_name = order.customer.name if order.customer else None
+        customer_phone = order.customer.phone if order.customer else phone
+        summary = format_order_summary(items_data, order.delivery_fee, order_type='DELIVERY', customer_name=customer_name, customer_phone=customer_phone)
         return f"{summary}\n\nTô esperando o comprovante! 📸\n\n_Ou digita 'pagar na entrega' se preferir_"
 
     return (
