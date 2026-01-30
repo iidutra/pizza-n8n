@@ -106,29 +106,46 @@ def delivery_fees_view(request):
     if request.method == 'POST':
         action = request.POST.get('action')
 
-        if action == 'create':
-            DeliveryFee.objects.create(
-                neighborhood=request.POST.get('neighborhood'),
-                fee=request.POST.get('fee'),
-                estimated_time=request.POST.get('estimated_time', 60),
-                active=request.POST.get('active') == 'on'
-            )
-            messages.success(request, 'Taxa de entrega criada!')
+        try:
+            if action == 'create':
+                neighborhood = request.POST.get('neighborhood', '').strip()
+                fee_value = request.POST.get('fee', '0').replace(',', '.')
+                estimated_time = request.POST.get('estimated_time', '60')
 
-        elif action == 'update':
-            fee_id = request.POST.get('fee_id')
-            fee = get_object_or_404(DeliveryFee, id=fee_id)
-            fee.neighborhood = request.POST.get('neighborhood')
-            fee.fee = request.POST.get('fee')
-            fee.estimated_time = request.POST.get('estimated_time', 60)
-            fee.active = request.POST.get('active') == 'on'
-            fee.save()
-            messages.success(request, 'Taxa de entrega atualizada!')
+                if not neighborhood:
+                    messages.error(request, 'Nome do bairro é obrigatório!')
+                    return redirect('delivery_fees')
 
-        elif action == 'delete':
-            fee_id = request.POST.get('fee_id')
-            DeliveryFee.objects.filter(id=fee_id).delete()
-            messages.success(request, 'Taxa de entrega removida!')
+                DeliveryFee.objects.create(
+                    neighborhood=neighborhood,
+                    fee=float(fee_value) if fee_value else 0,
+                    estimated_time=int(estimated_time) if estimated_time else 60,
+                    active=request.POST.get('active') == 'on'
+                )
+                messages.success(request, 'Taxa de entrega criada!')
+
+            elif action == 'update':
+                fee_id = request.POST.get('fee_id')
+                fee_obj = get_object_or_404(DeliveryFee, id=fee_id)
+                fee_value = request.POST.get('fee', '0').replace(',', '.')
+                estimated_time = request.POST.get('estimated_time', '60')
+
+                fee_obj.neighborhood = request.POST.get('neighborhood', fee_obj.neighborhood)
+                fee_obj.fee = float(fee_value) if fee_value else 0
+                fee_obj.estimated_time = int(estimated_time) if estimated_time else 60
+                fee_obj.active = request.POST.get('active') == 'on'
+                fee_obj.save()
+                messages.success(request, 'Taxa de entrega atualizada!')
+
+            elif action == 'delete':
+                fee_id = request.POST.get('fee_id')
+                DeliveryFee.objects.filter(id=fee_id).delete()
+                messages.success(request, 'Taxa de entrega removida!')
+
+        except ValueError as e:
+            messages.error(request, f'Valor inválido: {e}')
+        except Exception as e:
+            messages.error(request, f'Erro ao salvar: {e}')
 
         return redirect('delivery_fees')
 
