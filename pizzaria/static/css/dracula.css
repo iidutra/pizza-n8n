@@ -335,6 +335,29 @@ a:hover {
     color: var(--bg-primary);
 }
 
+.payment-method-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin-right: 5px;
+}
+
+.payment-method-badge.pix {
+    background-color: var(--accent-cyan);
+    color: var(--bg-primary);
+}
+
+.payment-method-badge.cash {
+    background-color: var(--accent-green);
+    color: var(--bg-primary);
+}
+
+.payment-method-badge.card {
+    background-color: var(--accent-purple);
+    color: var(--text-primary);
+}
+
 .order-type-badge {
     display: inline-block;
     padding: 2px 8px;

@@ -36,17 +36,29 @@
         <div class="order-totals">
             <p><span class="label">Subtotal:</span> R$ {{ order.subtotal }}</p>
             {% if order.delivery_fee > 0 %}
-                <p><span class="label">Taxa:</span> R$ {{ order.delivery_fee }}</p>
+                <p><span class="label">Taxa Entrega:</span> R$ {{ order.delivery_fee }}</p>
+            {% endif %}
+            {% if order.card_fee > 0 %}
+                <p><span class="label">Taxa Maquininha:</span> R$ {{ order.card_fee }}</p>
             {% endif %}
             <p class="total">TOTAL: R$ {{ order.total }}</p>
         </div>
 
         <p>
             <span class="label">Pagamento:</span>
+            {% if order.payment_method %}
+                <span class="payment-method-badge {% if order.payment_method == 'PIX' %}pix{% elif order.payment_method == 'CASH' %}cash{% else %}card{% endif %}">
+                    {{ order.get_payment_method_display }}
+                </span>
+            {% endif %}
             <span class="payment-badge {% if order.payment_status == 'PENDING' %}pending{% elif order.payment_status == 'RECEIPT_RECEIVED' %}received{% else %}confirmed{% endif %}">
                 {{ order.get_payment_status_display }}
             </span>
         </p>
+
+        {% if order.payment_method == 'CASH' and order.change_for %}
+            <p><span class="label">Troco para:</span> R$ {{ order.change_for }}</p>
+        {% endif %}
     </div>
 
     <div class="order-card-actions">

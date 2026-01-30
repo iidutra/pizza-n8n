@@ -331,32 +331,44 @@ def reject_payment(request):
         return JsonResponse({'error': 'JSON invalido'}, status=400)
 
     order_id = data.get('order_id')
-    order = get_object_or_404(Order, id=order_id)
+    if not order_id:
+        return JsonResponse({'error': 'order_id obrigatorio'}, status=400)
+
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        return JsonResponse({'error': 'Pedido nao encontrado'}, status=404)
 
     order.payment_status = 'PENDING'
     order.save()
 
     # Restaura o estado da conversa para aguardar novo comprovante
-    from django.core.cache import cache
-    import json
-    phone = order.customer.phone
-    key = f"conversation:{phone}"
-    state = {
-        "state": "awaiting_receipt",
-        "data": {"order_id": order.id},
-        "history": []
-    }
-    cache.set(key, json.dumps(state), 3600)  # 1 hora
+    try:
+        from django.core.cache import cache
+        phone = order.customer.phone
+        key = f"conversation:{phone}"
+        state = {
+            "state": "awaiting_receipt",
+            "data": {"order_id": order.id},
+            "history": []
+        }
+        cache.set(key, json.dumps(state), 3600)  # 1 hora
+    except Exception as e:
+        print(f"Erro ao restaurar estado: {e}")
 
-    settings = BusinessSettings.get_settings()
-    message = (
-        f"Opa! 😅 Não conseguimos verificar o comprovante enviado.\n\n"
-        f"Pode mandar novamente a foto do comprovante do PIX?\n\n"
-        f"Chave PIX: *{settings.pix_key}*\n"
-        f"Nome: {settings.pix_name}\n\n"
-        f"_Ou digite 'pagar na entrega' se preferir_"
-    )
-    send_whatsapp_message(order.customer.phone, message)
+    # Envia mensagem ao cliente
+    try:
+        settings = BusinessSettings.get_settings()
+        message = (
+            f"Opa! 😅 Não conseguimos verificar o comprovante enviado.\n\n"
+            f"Pode mandar novamente a foto do comprovante do PIX?\n\n"
+            f"Chave PIX: *{settings.pix_key}*\n"
+            f"Nome: {settings.pix_name}\n\n"
+            f"_Ou digite 'pagar na entrega' se preferir_"
+        )
+        send_whatsapp_message(order.customer.phone, message)
+    except Exception as e:
+        print(f"Erro ao enviar mensagem: {e}")
 
     return JsonResponse({
         'status': 'ok',
