@@ -1,10 +1,10 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import User
-from pizzaria.models import Product, DeliveryFee, BusinessSettings
+from pizzaria.models import BusinessSettings
 
 
 class Command(BaseCommand):
-    help = 'Configura dados iniciais do sistema (produtos, taxas, configuracoes)'
+    help = 'Configura dados iniciais do sistema (apenas usuario admin e configuracoes)'
 
     def handle(self, *args, **options):
         self.stdout.write('Configurando dados iniciais...')
@@ -16,20 +16,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write('Superusuario ja existe')
 
-        # Texto da promocao
-        promo_text = """🍕 Pizzaria do Negão 🍕
-
-Chegou a promoção pra você matar a fome com sabor! 😋
-
-✅ Promoção: 2 Pizzas Grandes por apenas R$ 55,00
-🚗 Delivery ou 🛍️ Retirada
-📍 Taxa de entrega conforme o bairro
-
-📲 Peça agora no WhatsApp: (69) 9 9363-9552
-
-A Pizzaria do Negão agradece a preferência! ❤️🍕"""
-
-        # Configuracoes do negocio
+        # Configuracoes do negocio (apenas se nao existir)
         settings, created = BusinessSettings.objects.get_or_create(
             pk=1,
             defaults={
@@ -40,118 +27,23 @@ A Pizzaria do Negão agradece a preferência! ❤️🍕"""
                 'closing_time': '23:59',
                 'min_delivery_time': 50,
                 'max_delivery_time': 70,
-                'promo_text': promo_text,
-                'promo_active': True,
+                'promo_active': False,
             }
         )
         if created:
             self.stdout.write(self.style.SUCCESS('Configuracoes do negocio criadas'))
         else:
-            # Atualiza promoção se já existe
-            settings.promo_text = promo_text
-            settings.promo_active = True
-            settings.save()
-            self.stdout.write(self.style.SUCCESS('Promocao atualizada!'))
+            self.stdout.write('Configuracoes ja existem, nao alterando')
 
-        # Produtos - Pizzas (conforme cardápio da imagem)
-        pizzas = [
-            {'name': 'Pizza Mussarela', 'description': 'Molho, mussarela, tomate e orégano', 'price': 30.00},
-            {'name': 'Pizza Calabresa', 'description': 'Molho, mussarela, calabresa, cebola e orégano', 'price': 35.00},
-            {'name': 'Pizza Frango com Catupiry', 'description': 'Molho, mussarela, frango, catupiry e orégano', 'price': 38.00},
-            {'name': 'Pizza Frango com Cheddar', 'description': 'Molho, mussarela, frango, cheddar e orégano', 'price': 38.00},
-            {'name': 'Pizza Frango com Milho', 'description': 'Molho, mussarela, frango, milho e orégano', 'price': 38.00},
-            {'name': 'Pizza Calabresa com Catupiry', 'description': 'Molho, mussarela, calabresa, catupiry e orégano', 'price': 38.00},
-            {'name': 'Pizza Atum', 'description': 'Molho, mussarela, atum, cebola e orégano', 'price': 40.00},
-            {'name': 'Pizza Palmito', 'description': 'Molho, mussarela, palmito, tomate e orégano', 'price': 38.00},
-            {'name': 'Pizza Francesa', 'description': 'Molho, mussarela, presuntado, catupiry e orégano', 'price': 38.00},
-            {'name': 'Pizza Baiana', 'description': 'Molho, mussarela, calabresa, pimenta calabresa e orégano', 'price': 38.00},
-            {'name': 'Pizza Mexicana', 'description': 'Molho, mussarela, calabresa, pimenta calabresa, bacon e orégano', 'price': 40.00},
-            {'name': 'Pizza Bacon', 'description': 'Molho, mussarela, bacon, tomate e orégano', 'price': 38.00},
-            {'name': 'Pizza Bauru', 'description': 'Molho, presunto, mussarela, tomate e orégano', 'price': 40.00},
-            {'name': 'Pizza Portuguesa', 'description': 'Molho, presunto, mussarela, milho, tomate, pimentão, calabresa e orégano', 'price': 40.00},
-            {'name': 'Pizza 4 Queijos', 'description': 'Molho, mussarela, cheddar, catupiry, parmesão e orégano', 'price': 42.00},
-        ]
+        # Pizzas, bebidas e taxas de entrega devem ser cadastradas pelo painel admin
+        self.stdout.write('')
+        self.stdout.write(self.style.WARNING('IMPORTANTE: Cadastre os produtos pelo painel:'))
+        self.stdout.write('  - Pizzas: Menu > Adicionar produto (categoria PIZZA)')
+        self.stdout.write('  - Pizzas Doces: Menu > Adicionar produto (categoria PIZZA_DOCE)')
+        self.stdout.write('  - Bebidas: Menu > Adicionar produto (categoria BEBIDA)')
+        self.stdout.write('  - Taxas de Entrega: Taxas de Entrega > Adicionar')
 
-        for pizza_data in pizzas:
-            product, created = Product.objects.get_or_create(
-                name=pizza_data['name'],
-                defaults={
-                    'description': pizza_data['description'],
-                    'price': pizza_data['price'],
-                    'category': 'PIZZA',
-                    'active': True
-                }
-            )
-            if created:
-                self.stdout.write(f'  Pizza criada: {product.name}')
-
-        # Produtos - Pizzas Doces (conforme cardápio da imagem)
-        pizzas_doces = [
-            {'name': 'Pizza Brigadeiro', 'description': 'Molho, chocolate ao leite e granulado', 'price': 40.00},
-            {'name': 'Pizza Prestígio', 'description': 'Molho, chocolate ao leite e coco ralado', 'price': 40.00},
-            {'name': 'Pizza Banana com Canela', 'description': 'Molho, banana, canela e leite condensado', 'price': 40.00},
-        ]
-
-        for doce_data in pizzas_doces:
-            product, created = Product.objects.get_or_create(
-                name=doce_data['name'],
-                defaults={
-                    'description': doce_data['description'],
-                    'price': doce_data['price'],
-                    'category': 'PIZZA_DOCE',
-                    'active': True
-                }
-            )
-            if created:
-                self.stdout.write(f'  Pizza doce criada: {product.name}')
-
-        # Produtos - Bebidas (só cria se não existir NENHUMA bebida)
-        # Isso evita sobrescrever alterações feitas no painel
-        bebidas_existentes = Product.objects.filter(category='BEBIDA').count()
-        if bebidas_existentes == 0:
-            bebidas = [
-                {'name': 'Coca-Cola 1,5L', 'price': 12.00},
-                {'name': 'Tuchaua 2L', 'price': 10.00},
-            ]
-
-            for bebida_data in bebidas:
-                product, created = Product.objects.get_or_create(
-                    name=bebida_data['name'],
-                    defaults={
-                        'price': bebida_data['price'],
-                        'category': 'BEBIDA',
-                        'active': True
-                    }
-                )
-                if created:
-                    self.stdout.write(f'  Bebida criada: {product.name}')
-        else:
-            self.stdout.write(f'  Bebidas ja existem ({bebidas_existentes}), nao alterando')
-
-        # Taxas de entrega por bairro (só cria se não existir NENHUMA taxa)
-        taxas_existentes = DeliveryFee.objects.count()
-        if taxas_existentes == 0:
-            bairros = [
-                {'neighborhood': 'Centro', 'fee': 5.00, 'estimated_time': 30},
-                {'neighborhood': 'Jardim Europa', 'fee': 7.00, 'estimated_time': 40},
-            ]
-
-            for bairro_data in bairros:
-                fee, created = DeliveryFee.objects.get_or_create(
-                    neighborhood=bairro_data['neighborhood'],
-                    defaults={
-                        'fee': bairro_data['fee'],
-                        'estimated_time': bairro_data['estimated_time'],
-                        'active': True
-                    }
-                )
-                if created:
-                    self.stdout.write(f'  Taxa criada: {fee.neighborhood}')
-        else:
-            self.stdout.write(f'  Taxas ja existem ({taxas_existentes}), nao alterando')
-
-        self.stdout.write(self.style.SUCCESS('\nDados iniciais configurados com sucesso!'))
+        self.stdout.write(self.style.SUCCESS('\nDados iniciais configurados!'))
         self.stdout.write(self.style.WARNING('\nCredenciais de acesso:'))
         self.stdout.write('  Usuario: admin')
         self.stdout.write('  Senha: admin123')
-        self.stdout.write('\nAcesse: http://localhost:8000/')
