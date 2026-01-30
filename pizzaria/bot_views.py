@@ -233,8 +233,10 @@ def find_product_fuzzy(text: str) -> Product:
     if text.isdigit():
         idx = int(text)
         pizzas = list(Product.objects.filter(category='PIZZA', active=True).order_by('name'))
+        logger.info(f"DEBUG find_product_fuzzy: numero={idx}, total_pizzas={len(pizzas)}")
         if 1 <= idx <= len(pizzas):
             return pizzas[idx - 1]
+        logger.warning(f"DEBUG: Numero {idx} fora do range 1-{len(pizzas)}")
         return None
 
     # Ignora palavras genéricas que não são sabores
@@ -1071,9 +1073,11 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
     """Trata seleção da segunda pizza da promoção."""
     state = get_conversation_state(phone)
     pizza_1_id = state["data"].get("promo_pizza_1")
+    logger.info(f"DEBUG handle_promo_pizza_2: message='{message}', pizza_1_id={pizza_1_id}")
 
     product = find_product_fuzzy(message)
     if not product:
+        logger.warning(f"DEBUG: find_product_fuzzy retornou None para '{message}'")
         return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_'voltar' | 'sair'_"
 
     try:
