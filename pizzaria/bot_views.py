@@ -1435,7 +1435,7 @@ def handle_confirming_pickup(phone: str, message: str) -> str:
         clear_conversation_state(phone)
 
         return (
-            f"Pedido #{order.id} confirmado! ✅🍕\n\n"
+            f"Pedido confirmado! ✅🍕\n\n"
             f"Já tô preparando! Quando ficar pronto eu te aviso aqui, beleza?\n\n"
             f"A Pizzaria do Negão agradece! ❤️"
         )
@@ -1571,7 +1571,7 @@ def handle_confirming_delivery(phone: str, message: str) -> str:
         set_conversation_state(phone, "awaiting_payment_choice", {"order_id": order.id})
 
         return (
-            f"Pedido #{order.id} confirmado! ✅\n\n"
+            f"Pedido confirmado! ✅\n\n"
             f"💰 *Como vai ser o pagamento?*\n\n"
             f"1️⃣ *PIX* (envia comprovante)\n"
             f"2️⃣ *Dinheiro* (paga na entrega)\n"
@@ -1640,7 +1640,7 @@ def handle_payment_choice(phone: str, message: str) -> str:
         clear_conversation_state(phone)
 
         return (
-            f"Pedido #{order.id} confirmado! ✅\n\n"
+            f"Pedido confirmado! ✅\n\n"
             f"💳 *Pagamento: Cartão de Crédito*\n"
             f"(+R$ 2,00 taxa maquininha)\n\n"
             f"*Total: R$ {order.total:.2f}*\n\n"
@@ -1660,7 +1660,7 @@ def handle_payment_choice(phone: str, message: str) -> str:
         clear_conversation_state(phone)
 
         return (
-            f"Pedido #{order.id} confirmado! ✅\n\n"
+            f"Pedido confirmado! ✅\n\n"
             f"💳 *Pagamento: Cartão de Débito*\n"
             f"(+R$ 2,00 taxa maquininha)\n\n"
             f"*Total: R$ {order.total:.2f}*\n\n"
@@ -1744,7 +1744,7 @@ def handle_awaiting_receipt(phone: str, message: str, msg_type: str, media_url: 
 
         return (
             f"Comprovante recebido! ✅\n\n"
-            f"Seu pedido #{order.id} está sendo analisado. 🔍\n\n"
+            f"Seu pedido está sendo analisado. 🔍\n\n"
             f"Assim que o pagamento for confirmado, te aviso aqui e já começo a preparar! 🍕\n\n"
             f"A Pizzaria do Negão agradece pela preferência! ❤️"
         )
@@ -1846,7 +1846,7 @@ def handle_awaiting_change(phone: str, message: str) -> str:
         clear_conversation_state(phone)
         settings_obj = BusinessSettings.get_settings()
         return (
-            f"Beleza! Pedido #{order.id} confirmado! 💵\n\n"
+            f"Pedido confirmado! 💵\n\n"
             f"Pagamento: *Dinheiro* (sem troco)\n\n"
             f"⏱️ Previsão: {settings_obj.min_delivery_time} a {settings_obj.max_delivery_time} min\n\n"
             f"Quando sair pra entrega eu te aviso aqui!\n\n"
@@ -1867,7 +1867,7 @@ def handle_awaiting_change(phone: str, message: str) -> str:
         clear_conversation_state(phone)
         settings_obj = BusinessSettings.get_settings()
         return (
-            f"Beleza! Pedido #{order.id} confirmado! 💵\n\n"
+            f"Pedido confirmado! 💵\n\n"
             f"Pagamento: *Dinheiro*\n"
             f"💰 Troco pra: R$ {change_for},00\n\n"
             f"⏱️ Previsão: {settings_obj.min_delivery_time} a {settings_obj.max_delivery_time} min\n\n"
@@ -1910,7 +1910,7 @@ def handle_card_type(phone: str, message: str) -> str:
     clear_conversation_state(phone)
     settings_obj = BusinessSettings.get_settings()
     return (
-        f"Beleza! Pedido #{order.id} confirmado! 💳\n\n"
+        f"Pedido confirmado! 💳\n\n"
         f"Pagamento: *Cartão {card_name}*\n"
         f"⚠️ Taxa da maquininha: R$ 2,00\n\n"
         f"⏱️ Previsão: {settings_obj.min_delivery_time} a {settings_obj.max_delivery_time} min\n\n"

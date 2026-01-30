@@ -324,7 +324,7 @@ def confirm_payment(request):
     settings = BusinessSettings.get_settings()
     message = (
         f"Pagamento confirmado! ✅\n\n"
-        f"Seu pedido #{order.id} já está sendo preparado! 🍕👨‍🍳\n\n"
+        f"Seu pedido já está sendo preparado! 🍕👨‍🍳\n\n"
         f"⏱️ Previsão de entrega: {settings.min_delivery_time} a {settings.max_delivery_time} minutos\n\n"
         f"Quando sair pra entrega eu te aviso aqui!\n\n"
         f"A {settings.business_name} agradece! ❤️"
