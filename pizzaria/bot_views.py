@@ -1596,26 +1596,13 @@ def handle_menu_request(phone: str) -> str:
     return menu
 
 
-def is_valid_brazilian_phone(phone: str) -> bool:
-    """Verifica se é um número de telefone brasileiro válido."""
+def is_valid_phone(phone: str) -> bool:
+    """Verifica se é um número de telefone válido (brasileiro ou internacional)."""
     if not phone:
         return False
     digits = ''.join(filter(str.isdigit, phone))
-    # Telefone brasileiro: 10-13 dígitos
-    # Sem DDI: 10-11 (DDD + número)
-    # Com DDI: 12-13 (55 + DDD + número)
-    if len(digits) < 10 or len(digits) > 13:
-        return False
-    # Verifica se parece um DDD válido
-    if digits.startswith('55'):
-        ddd = digits[2:4] if len(digits) >= 4 else ''
-    else:
-        ddd = digits[0:2]
-    try:
-        ddd_num = int(ddd)
-        if not (11 <= ddd_num <= 99):
-            return False
-    except ValueError:
+    # Aceita telefones com 8 a 15 dígitos (cobre maioria dos países)
+    if len(digits) < 8 or len(digits) > 15:
         return False
     return True
 
@@ -1650,8 +1637,8 @@ def extract_phone_number(payload: dict) -> str:
         if not phone.isdigit():
             phone = re.sub(r'\D', '', phone)
 
-        # Valida se é um telefone brasileiro
-        if phone and is_valid_brazilian_phone(phone):
+        # Valida se é um telefone válido (brasileiro ou internacional)
+        if phone and is_valid_phone(phone):
             logger.info(f"Telefone extraido de '{candidate}': {phone}")
             return phone
 
