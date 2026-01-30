@@ -628,6 +628,98 @@ tr:hover {
     font-size: 1rem;
 }
 
+/* Mobile Header */
+.mobile-header {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background-color: var(--bg-secondary);
+    padding: 0 15px;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 100;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mobile-header h1 {
+    font-size: 1.1rem;
+    color: var(--accent-purple);
+}
+
+.menu-toggle {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 5px;
+}
+
+.sidebar-close {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.8rem;
+    cursor: pointer;
+    position: absolute;
+    right: 15px;
+    top: 15px;
+}
+
+/* Sidebar Overlay */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 199;
+}
+
+.sidebar-overlay.active {
+    display: block;
+}
+
+/* Bottom Navigation */
+.bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 65px;
+    background-color: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    z-index: 100;
+}
+
+.bottom-nav a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.7rem;
+    padding: 8px 0;
+}
+
+.bottom-nav a .icon {
+    font-size: 1.3rem;
+    margin-bottom: 3px;
+}
+
+.bottom-nav a.active {
+    color: var(--accent-pink);
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
     .kanban-board {
@@ -636,24 +728,121 @@ tr:hover {
 }
 
 @media (max-width: 768px) {
+    .mobile-header {
+        display: flex;
+    }
+
     .sidebar {
-        display: none;
+        position: fixed;
+        left: -280px;
+        top: 0;
+        width: 280px;
+        height: 100vh;
+        z-index: 200;
+        transition: left 0.3s ease;
+    }
+
+    .sidebar.open {
+        left: 0;
+    }
+
+    .sidebar-close {
+        display: block;
+    }
+
+    .sidebar-logo {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .bottom-nav {
+        display: flex;
     }
 
     .main-content {
         margin-left: 0;
+        padding-top: 75px;
+        padding-bottom: 80px;
+    }
+
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .header h2 {
+        font-size: 1.2rem;
     }
 
     .kanban-board {
         grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .kanban-column {
+        min-height: auto;
+        padding: 10px;
+    }
+
+    .kanban-column-header h3 {
+        font-size: 0.9rem;
+    }
+
+    .order-card {
+        padding: 12px;
+    }
+
+    .order-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+
+    .order-card-actions {
+        flex-direction: column;
+    }
+
+    .order-card-actions .btn {
+        width: 100%;
+        justify-content: center;
     }
 
     .payment-card {
         grid-template-columns: 1fr;
     }
 
+    .payment-card .receipt-preview {
+        width: 100%;
+        height: auto;
+        max-height: 250px;
+    }
+
     .grid-2, .grid-3 {
         grid-template-columns: 1fr;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .stat-card {
+        padding: 15px;
+    }
+
+    .stat-card .stat-value {
+        font-size: 1.5rem;
+    }
+
+    .btn {
+        padding: 10px 15px;
+        font-size: 0.85rem;
+    }
+
+    .btn-sm {
+        padding: 8px 12px;
     }
 }
 

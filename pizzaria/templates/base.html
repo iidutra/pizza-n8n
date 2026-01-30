@@ -10,9 +10,16 @@
 </head>
 <body>
     <div class="app-container">
-        <aside class="sidebar">
+        <!-- Header Mobile -->
+        <header class="mobile-header">
+            <h1>Pizzaria do Negao</h1>
+            <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+        </header>
+
+        <aside class="sidebar" id="sidebar">
             <div class="sidebar-logo">
                 <h1>Pizzaria do Negao</h1>
+                <button class="sidebar-close" onclick="toggleSidebar()">&times;</button>
             </div>
             <ul class="sidebar-nav">
                 <li>
@@ -60,6 +67,29 @@
             </ul>
         </aside>
 
+        <!-- Overlay para fechar sidebar -->
+        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+        <!-- Bottom Navigation Mobile -->
+        <nav class="bottom-nav">
+            <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'dashboard_alt' %}active{% endif %}">
+                <span class="icon">&#128230;</span>
+                <span>Pedidos</span>
+            </a>
+            <a href="{% url 'payments' %}" class="{% if request.resolver_match.url_name == 'payments' %}active{% endif %}">
+                <span class="icon">&#128179;</span>
+                <span>Pag.</span>
+            </a>
+            <a href="{% url 'menu' %}" class="{% if request.resolver_match.url_name == 'menu' %}active{% endif %}">
+                <span class="icon">&#127829;</span>
+                <span>Menu</span>
+            </a>
+            <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}">
+                <span class="icon">&#9881;</span>
+                <span>Config</span>
+            </a>
+        </nav>
+
         <main class="main-content">
             <header class="header">
                 <h2>{{ page_title|default:"Dashboard" }}</h2>
@@ -81,6 +111,14 @@
     </div>
 
     <script src="{% static 'js/dashboard.js' %}"></script>
+    <script>
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('active');
+    }
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
