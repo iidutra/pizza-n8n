@@ -1111,16 +1111,59 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
     pizza_1_id = state["data"].get("promo_pizza_1")
     logger.info(f"DEBUG handle_promo_pizza_2: message={repr(message)}, isdigit={message.strip().isdigit()}, pizza_1_id={pizza_1_id}")
 
-    product = find_product_fuzzy(message)
-    if not product:
-        logger.warning(f"DEBUG: find_product_fuzzy retornou None para '{message}'")
-        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_'voltar' | 'sair'_"
-
     try:
         pizza_1 = Product.objects.get(id=pizza_1_id)
     except Product.DoesNotExist:
         clear_conversation_state(phone)
         return "Ops, algo deu errado 😅 Vamos recomeçar!"
+
+    # Verifica se digitou dois números para meio a meio (ex: "1 e 4", "1,4")
+    two_numbers = parse_two_numbers(message)
+    if two_numbers:
+        num1, num2 = two_numbers
+        pizzas = list(Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name'))
+        if 1 <= num1 <= len(pizzas) and 1 <= num2 <= len(pizzas):
+            half_pizza1 = pizzas[num1 - 1]
+            half_pizza2 = pizzas[num2 - 1]
+
+            # Segunda pizza será meio a meio
+            promo_price = Decimal('27.50')
+            half_price = max(half_pizza1.price, half_pizza2.price)
+
+            items = [
+                {"product_id": pizza_1.id, "quantity": 1, "promo_price": float(promo_price)},
+                {
+                    "type": "half_half",
+                    "pizza1_id": half_pizza1.id,
+                    "pizza2_id": half_pizza2.id,
+                    "pizza1_name": half_pizza1.name,
+                    "pizza2_name": half_pizza2.name,
+                    "price": float(promo_price),
+                    "quantity": 1
+                }
+            ]
+
+            set_conversation_state(phone, "awaiting_promo_order_type", {
+                "items": items,
+                "promo": True,
+                "pizza_1_name": pizza_1.name,
+                "pizza_2_name": f"½ {half_pizza1.name} + ½ {half_pizza2.name}"
+            })
+
+            return (
+                f"Perfeito! ✅ Segunda pizza: *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n\n"
+                f"🍕 *{pizza_1.name}* + *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n"
+                f"💰 *Total da promoção: R$ 55,00*\n\n"
+                f"Vai ser pra *entrega* ou *retirada*? 🛵🏪\n\n"
+                f"1️⃣ Entrega (delivery)\n"
+                f"2️⃣ Retirada no local\n\n"
+                f"_'voltar' | 'sair'_"
+            )
+
+    product = find_product_fuzzy(message)
+    if not product:
+        logger.warning(f"DEBUG: find_product_fuzzy retornou None para '{message}'")
+        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode digitar '1 e 4' para meio a meio!_\n\n_'voltar' | 'sair'_"
 
     # Define os itens com preço especial da promoção (R$ 27,50 cada = R$ 55 total)
     promo_price = Decimal('27.50')
