@@ -2,7 +2,6 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8000
 
 WORKDIR /app
 
@@ -18,6 +17,11 @@ COPY . .
 
 RUN mkdir -p /app/media /app/staticfiles
 
-EXPOSE 8000
+RUN python manage.py collectstatic --noinput || true
 
-CMD sh -c "gunicorn --bind 0.0.0.0:\$PORT --workers 1 --timeout 120 backend.wsgi:application"
+CMD sh -c "\
+  python manage.py migrate --noinput && \
+  python manage.py setup_initial_data 2>/dev/null || true && \
+  python manage.py collectstatic --noinput && \
+  gunicorn --bind 0.0.0.0:${PORT:-8000} --workers 2 --access-logfile - --error-logfile - backend.wsgi:application \
+"
