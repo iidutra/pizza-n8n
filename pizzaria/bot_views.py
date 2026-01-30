@@ -241,7 +241,7 @@ def find_product_fuzzy(text: str) -> Product:
     # Se é um número, busca direto pelo índice do cardápio (só pizzas salgadas)
     if text.isdigit():
         idx = int(text)
-        pizzas = list(Product.objects.filter(category='PIZZA', active=True).order_by('name'))
+        pizzas = list(Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name'))
         logger.info(f"DEBUG find_product_fuzzy: numero={idx}, total_pizzas={len(pizzas)}, pizzas={[p.name for p in pizzas[:5]]}")
         if 1 <= idx <= len(pizzas):
             return pizzas[idx - 1]
@@ -474,7 +474,7 @@ def resolve_half_half_by_number(sabor: str) -> Product:
     """Se o sabor começa com #, é um número do cardápio. Converte para produto."""
     if sabor.startswith('#'):
         idx = int(sabor[1:])
-        pizzas = list(Product.objects.filter(category='PIZZA', active=True).order_by('name'))
+        pizzas = list(Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name'))
         if 1 <= idx <= len(pizzas):
             return pizzas[idx - 1]
         return None
@@ -632,7 +632,7 @@ def handle_welcome(phone: str, message: str, msg_type: str) -> str:
     two_numbers = parse_two_numbers(message)
     if two_numbers:
         num1, num2 = two_numbers
-        pizzas = list(Product.objects.filter(category='PIZZA', active=True).order_by('name'))
+        pizzas = list(Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name'))
         if 1 <= num1 <= len(pizzas) and 1 <= num2 <= len(pizzas):
             pizza1 = pizzas[num1 - 1]
             pizza2 = pizzas[num2 - 1]
@@ -786,7 +786,7 @@ def handle_half_half_order(phone: str, message: str) -> str:
     # Não conseguiu identificar, inicia fluxo meio a meio
     set_conversation_state(phone, "awaiting_half_half_first", {})
 
-    pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+    pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
     menu = "Pizza meio a meio! 🍕\n\nEscolhe o *primeiro* sabor:\n\n"
     for i, pizza in enumerate(pizzas, 1):
         menu += f"{i}. {pizza.name}\n"
@@ -839,7 +839,7 @@ def handle_half_half_first(phone: str, message: str) -> str:
         "pizza1_name": product.name
     })
 
-    pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+    pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
     menu = f"Boa! ½ *{product.name}* ✅\n\nAgora o *segundo* sabor:\n\n"
     for i, pizza in enumerate(pizzas, 1):
         menu += f"{i}. {pizza.name}\n"
@@ -927,7 +927,7 @@ def handle_observation(phone: str, message: str) -> str:
 
 def handle_promo_order(phone: str) -> str:
     """Inicia pedido da promoção (2 pizzas por R$ 55)."""
-    pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+    pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
 
     menu = "Boa escolha! 🔥 *2 Pizzas Grandes por R$ 55,00*\n\n"
     menu += "Escolhe o *primeiro* sabor:\n\n"
@@ -946,7 +946,7 @@ def handle_promo_pizza_1(phone: str, message: str) -> str:
     two_numbers = parse_two_numbers(message)
     if two_numbers:
         num1, num2 = two_numbers
-        pizzas = list(Product.objects.filter(category='PIZZA', active=True).order_by('name'))
+        pizzas = list(Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name'))
         if 1 <= num1 <= len(pizzas) and 1 <= num2 <= len(pizzas):
             pizza1 = pizzas[num1 - 1]
             pizza2 = pizzas[num2 - 1]
@@ -969,7 +969,7 @@ def handle_promo_pizza_1(phone: str, message: str) -> str:
     if not product:
         return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode digitar '1 e 2' para escolher dois sabores!_\n\n_'voltar' | 'sair'_"
 
-    pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+    pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
 
     menu = f"Boa! ✅ Primeira pizza: *{product.name}*\n\n"
     menu += "Agora escolhe o *segundo* sabor:\n\n"
@@ -1019,7 +1019,7 @@ def handle_promo_half_or_full(phone: str, message: str) -> str:
                 "promo_price": float(promo_price)
             }]
         })
-        pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+        pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
         menu = (
             f"Boa! 🍕 Primeira pizza: *Meio a Meio*\n"
             f"½ {pizza1.name} + ½ {pizza2.name}\n\n"
@@ -1172,7 +1172,7 @@ def handle_awaiting_more_items(phone: str, message: str) -> str:
         set_conversation_state(phone, "awaiting_another_item", {"items": items, "order_type": order_type})
 
         # Mostra cardápio resumido
-        pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+        pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
         menu = "Beleza! Qual outro sabor? 🍕\n\n"
         for i, pizza in enumerate(pizzas, 1):
             menu += f"{i}. {pizza.name} - R$ {pizza.price:.2f}\n"
@@ -1235,7 +1235,7 @@ def handle_awaiting_another_item(phone: str, message: str) -> str:
 
         # Inicia fluxo de meio a meio
         set_conversation_state(phone, "awaiting_half_half_first", {"items": items, "order_type": order_type})
-        pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+        pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
         menu = "Pizza meio a meio! 🍕\n\nEscolhe o *primeiro* sabor:\n\n"
         for i, pizza in enumerate(pizzas, 1):
             menu += f"{i}. {pizza.name}\n"
@@ -1297,7 +1297,7 @@ def handle_awaiting_more_items_pickup(phone: str, message: str) -> str:
         set_conversation_state(phone, "awaiting_pickup_items", {"items": items, "order_type": "PICKUP"})
 
         # Mostra cardápio resumido
-        pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+        pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
         menu = "Beleza! Qual outro sabor? 🍕\n\n"
         for i, pizza in enumerate(pizzas, 1):
             menu += f"{i}. {pizza.name} - R$ {pizza.price:.2f}\n"
@@ -1974,7 +1974,7 @@ def handle_promo_request(phone: str) -> str:
         response += "No momento não temos promoções ativas 😕\n\n"
 
     # Cardápio de pizzas salgadas
-    pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+    pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
     if pizzas:
         response += "*🍕 PIZZAS SALGADAS*\n"
         for i, pizza in enumerate(pizzas, 1):
@@ -2005,7 +2005,7 @@ def handle_menu_request(phone: str) -> str:
     """Envia cardapio em texto."""
     menu = "Olha só nosso cardápio! 🍕\n\n"
 
-    pizzas = Product.objects.filter(category='PIZZA', active=True).order_by('name')
+    pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
     menu += "*🍕 PIZZAS SALGADAS*\n"
     for i, pizza in enumerate(pizzas, 1):
         menu += f"{i}. {pizza.name} - R$ {pizza.price:.2f}\n"
