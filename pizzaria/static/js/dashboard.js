@@ -49,34 +49,81 @@ if (window.location.pathname === '/' || window.location.pathname === '/dashboard
 }
 
 // Notification sound for new orders
-let lastOrderCount = 0;
+let lastOrderCount = -1;  // -1 indica que ainda não carregou
 let lastAwaitingCount = 0;
+let audioContext = null;
+let audioEnabled = false;
+
+// Inicializa AudioContext após interação do usuário
+function initAudio() {
+    if (audioContext) return;
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioEnabled = true;
+        console.log('Audio inicializado com sucesso');
+    } catch (e) {
+        console.log('Erro ao inicializar audio:', e);
+    }
+}
+
+// Habilita audio no primeiro clique/toque na página
+document.addEventListener('click', initAudio, { once: true });
+document.addEventListener('touchstart', initAudio, { once: true });
 
 // Som de notificação mais audível (beep repetido)
 function playNotificationSound() {
-    try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    // Tenta usar AudioContext
+    if (audioContext && audioEnabled) {
+        try {
+            // Resume se estiver suspenso
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
 
-        function beep(frequency, duration, time) {
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            oscillator.frequency.value = frequency;
-            oscillator.type = 'sine';
-            gainNode.gain.setValueAtTime(0.5, time);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, time + duration);
-            oscillator.start(time);
-            oscillator.stop(time + duration);
+            function beep(frequency, duration, time) {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                oscillator.frequency.value = frequency;
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.5, time);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, time + duration);
+                oscillator.start(time);
+                oscillator.stop(time + duration);
+            }
+
+            // Toca 3 beeps
+            const now = audioContext.currentTime;
+            beep(800, 0.2, now);
+            beep(1000, 0.2, now + 0.25);
+            beep(800, 0.3, now + 0.5);
+            console.log('Som tocado com sucesso');
+        } catch (e) {
+            console.log('Erro ao tocar som:', e);
         }
+    }
 
-        // Toca 3 beeps
-        const now = audioContext.currentTime;
-        beep(800, 0.2, now);
-        beep(1000, 0.2, now + 0.25);
-        beep(800, 0.3, now + 0.5);
-    } catch (e) {
-        console.log('Sound notification not available:', e);
+    // Também envia notificação do navegador se permitido
+    if (Notification.permission === 'granted') {
+        try {
+            new Notification('🍕 Novo Pedido!', {
+                body: 'Um novo pedido chegou na pizzaria!',
+                icon: '/static/img/pizza-icon.png',
+                requireInteraction: true
+            });
+        } catch (e) {
+            console.log('Erro na notificação:', e);
+        }
+    }
+}
+
+// Pede permissão para notificações
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+            console.log('Permissão de notificação:', permission);
+        });
     }
 }
 
@@ -118,6 +165,65 @@ function showNewOrderAlert(count) {
     }, 10000);
 }
 
+// Mostra banner para habilitar notificações
+function showNotificationBanner() {
+    if (localStorage.getItem('notificationBannerDismissed')) return;
+    if (audioEnabled && Notification.permission === 'granted') return;
+
+    const banner = document.createElement('div');
+    banner.id = 'notificationBanner';
+    banner.innerHTML = `
+        <div style="
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #6272a4;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            z-index: 9998;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        ">
+            <span>🔔 Clique aqui para ativar notificações de novos pedidos</span>
+            <button onclick="enableNotifications()" style="
+                background: #50fa7b;
+                color: #282a36;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 5px;
+                cursor: pointer;
+                font-weight: bold;
+            ">Ativar</button>
+            <button onclick="dismissNotificationBanner()" style="
+                background: transparent;
+                color: white;
+                border: none;
+                cursor: pointer;
+                font-size: 1.2rem;
+            ">&times;</button>
+        </div>
+    `;
+    document.body.appendChild(banner);
+}
+
+function enableNotifications() {
+    initAudio();
+    requestNotificationPermission();
+    playNotificationSound(); // Toca um som de teste
+    dismissNotificationBanner();
+}
+
+function dismissNotificationBanner() {
+    const banner = document.getElementById('notificationBanner');
+    if (banner) banner.remove();
+    localStorage.setItem('notificationBannerDismissed', 'true');
+}
+
 function checkNewOrders() {
     const newOrdersBadge = document.querySelector('.kanban-column.new .badge');
     const awaitingBadge = document.querySelector('.kanban-column.awaiting .badge');
@@ -126,8 +232,15 @@ function checkNewOrders() {
         const currentCount = parseInt(newOrdersBadge.textContent) || 0;
         const awaitingCount = awaitingBadge ? parseInt(awaitingBadge.textContent) || 0 : 0;
 
+        // Na primeira carga, apenas salva os valores
+        if (lastOrderCount === -1) {
+            lastOrderCount = currentCount;
+            lastAwaitingCount = awaitingCount;
+            return;
+        }
+
         // Verifica se há novos pedidos ou novos aguardando pagamento
-        if ((currentCount > lastOrderCount || awaitingCount > lastAwaitingCount) && (lastOrderCount > 0 || lastAwaitingCount > 0)) {
+        if (currentCount > lastOrderCount || awaitingCount > lastAwaitingCount) {
             playNotificationSound();
             showNewOrderAlert(currentCount + awaitingCount);
         }
@@ -142,18 +255,29 @@ function pollNewOrders() {
     fetch('/ajax/order-counts/')
         .then(response => response.json())
         .then(data => {
-            const totalNew = (data.new || 0) + (data.awaiting_payment || 0);
+            const currentNew = data.new || 0;
+            const currentAwaiting = data.awaiting_payment || 0;
+            const totalNew = currentNew + currentAwaiting;
+
+            // Na primeira carga, apenas salva os valores
+            if (lastOrderCount === -1) {
+                lastOrderCount = currentNew;
+                lastAwaitingCount = currentAwaiting;
+                return;
+            }
+
             const lastTotal = lastOrderCount + lastAwaitingCount;
 
-            if (totalNew > lastTotal && lastTotal > 0) {
+            if (totalNew > lastTotal) {
+                console.log(`Novo pedido detectado! ${lastTotal} -> ${totalNew}`);
                 playNotificationSound();
                 showNewOrderAlert(totalNew);
                 // Recarrega a página para mostrar novos pedidos
                 setTimeout(() => location.reload(), 2000);
             }
 
-            lastOrderCount = data.new || 0;
-            lastAwaitingCount = data.awaiting_payment || 0;
+            lastOrderCount = currentNew;
+            lastAwaitingCount = currentAwaiting;
         })
         .catch(err => console.log('Erro ao verificar pedidos:', err));
 }
@@ -161,6 +285,11 @@ function pollNewOrders() {
 // Initial check e polling
 document.addEventListener('DOMContentLoaded', function() {
     checkNewOrders();
+    requestNotificationPermission();
+
+    // Mostra banner se notificações não estão ativadas
+    setTimeout(showNotificationBanner, 2000);
+
     // Poll a cada 15 segundos
     setInterval(pollNewOrders, 15000);
 });
