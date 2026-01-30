@@ -314,7 +314,7 @@ def find_product_fuzzy(text: str) -> Product:
 
 def find_drink_by_option(option: str) -> Product:
     """Encontra bebida pela opcao selecionada."""
-    drinks = list(Product.objects.filter(category='BEBIDA', active=True)[:4])
+    drinks = list(Product.objects.filter(category='BEBIDA', active=True).order_by('name'))
 
     option = option.strip()
 
@@ -376,7 +376,7 @@ def find_neighborhood_fee(neighborhood: str) -> DeliveryFee:
 
 def get_drinks_menu() -> str:
     """Retorna menu de bebidas formatado."""
-    drinks = Product.objects.filter(category='BEBIDA', active=True)[:4]
+    drinks = Product.objects.filter(category='BEBIDA', active=True).order_by('name')
     menu = "E pra beber, vai querer alguma coisa? 🥤\n\n"
 
     for i, drink in enumerate(drinks, 1):
@@ -1330,7 +1330,7 @@ def handle_awaiting_drink(phone: str, message: str) -> str:
     state = get_conversation_state(phone)
     items = state["data"].get("items", [])
 
-    drinks = list(Product.objects.filter(category='BEBIDA', active=True)[:4])
+    drinks = list(Product.objects.filter(category='BEBIDA', active=True).order_by('name'))
     no_drink_option = str(len(drinks) + 1)
 
     # Verifica se não quer bebida
@@ -1356,7 +1356,7 @@ def handle_awaiting_drink_pickup(phone: str, message: str) -> str:
     items = state["data"].get("items", [])
     is_promo = state["data"].get("promo", False)
 
-    drinks = list(Product.objects.filter(category='BEBIDA', active=True)[:4])
+    drinks = list(Product.objects.filter(category='BEBIDA', active=True).order_by('name'))
     no_drink_option = str(len(drinks) + 1)
 
     # Verifica se não quer bebida
