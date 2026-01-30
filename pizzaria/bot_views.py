@@ -2080,16 +2080,35 @@ def bot_webhook(request):
     if payload.get('fromMe', False):
         return JsonResponse({"status": "ignored"})
 
-    # IMPORTANTE: Ignora mensagens antigas (mais de 60 segundos)
-    # Isso evita que mensagens de sincronização do WAHA disparem respostas em massa
+    # IMPORTANTE: Ignora mensagens antigas para evitar disparo em massa ao reconectar
+    import time
+    current_time = int(time.time())
+
+    # Tenta múltiplos campos de timestamp (WAHA usa diferentes formatos)
     timestamp = payload.get('timestamp')
+    if not timestamp:
+        # Tenta outros campos possíveis
+        timestamp = payload.get('t')
+        if not timestamp:
+            _data = payload.get('_data', {})
+            timestamp = _data.get('t') or _data.get('timestamp')
+
     if timestamp:
-        import time
-        current_time = int(time.time())
-        message_age = current_time - int(timestamp)
-        if message_age > 60:  # Ignora mensagens com mais de 60 segundos
-            logger.info(f"Mensagem antiga ignorada: {message_age}s atrás")
-            return JsonResponse({"status": "ignored", "reason": "old_message"})
+        try:
+            ts = int(timestamp)
+            # Se timestamp está em milissegundos, converte para segundos
+            if ts > 9999999999:
+                ts = ts // 1000
+            message_age = current_time - ts
+            if message_age > 60:  # Ignora mensagens com mais de 60 segundos
+                logger.info(f"Mensagem antiga ignorada: {message_age}s atrás (ts={timestamp})")
+                return JsonResponse({"status": "ignored", "reason": "old_message"})
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Erro ao processar timestamp: {e}")
+    else:
+        # SEM TIMESTAMP: provavelmente é sincronização - ignora por segurança
+        logger.warning(f"Mensagem sem timestamp - ignorando por segurança (possível sync)")
+        return JsonResponse({"status": "ignored", "reason": "no_timestamp"})
 
     # Extrai o número de telefone corretamente
     phone = extract_phone_number(payload)
