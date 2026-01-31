@@ -1542,6 +1542,21 @@ def handle_awaiting_address(phone: str, message: str) -> str:
     state = get_conversation_state(phone)
     items = state["data"].get("items", [])
     is_promo = state["data"].get("promo", False)
+    message_lower = message.lower().strip()
+
+    # Verifica se quer mudar para retirada
+    if message_lower in ['retirada', 'retirar', 'buscar', 'pickup', 'retira']:
+        set_conversation_state(phone, "awaiting_drink_pickup", {
+            "items": items,
+            "order_type": "PICKUP",
+            "promo": is_promo
+        })
+        return (
+            f"Beleza, vai retirar no local! 👍\n\n"
+            f"📍 *Endereço:* {PICKUP_ADDRESS}\n"
+            f"🗺️ {PICKUP_MAPS_LINK}\n\n"
+            + get_drinks_menu()
+        )
 
     # Verifica se o endereço é muito curto
     if len(message.strip()) < 10:
@@ -1549,7 +1564,6 @@ def handle_awaiting_address(phone: str, message: str) -> str:
 
     # Busca todos os bairros ativos
     all_fees = DeliveryFee.objects.filter(active=True).order_by('neighborhood')
-    message_lower = message.lower()
     neighborhood = None
     fee_obj = None
 
@@ -1560,15 +1574,18 @@ def handle_awaiting_address(phone: str, message: str) -> str:
             neighborhood = fee.neighborhood
             break
 
-    # Se não encontrou, tenta por palavras individuais (busca fuzzy)
+    # Se não encontrou, tenta buscar nas ÚLTIMAS palavras do endereço (onde geralmente fica o bairro)
     if not neighborhood:
-        words = message_lower.split()
-        for word in words:
-            if len(word) >= 3:  # Ignora palavras muito curtas
-                fee_obj = find_neighborhood_fee(word)
-                if fee_obj:
-                    neighborhood = fee_obj.neighborhood
-                    break
+        # Remove números e palavras comuns de endereço
+        palavras_ignorar = ['rua', 'avenida', 'av', 'travessa', 'tv', 'alameda', 'al', 'numero', 'num', 'nº', 'n', 'casa', 'apt', 'apto', 'apartamento', 'bloco', 'bl', 'quadra', 'qd', 'lote', 'lt', 'e', 'de', 'do', 'da', 'dos', 'das', 'meio']
+        words = [w for w in message_lower.replace(',', ' ').split() if w not in palavras_ignorar and not w.isdigit() and len(w) >= 4]
+
+        # Busca do final para o início (bairro geralmente é a última palavra)
+        for word in reversed(words):
+            fee_obj = find_neighborhood_fee(word)
+            if fee_obj:
+                neighborhood = fee_obj.neighborhood
+                break
 
     # Se ainda não encontrou o bairro, informa que não entrega na região
     if not neighborhood or not fee_obj:
