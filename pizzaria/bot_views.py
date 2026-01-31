@@ -519,6 +519,31 @@ def parse_two_numbers(text: str) -> tuple:
     return None
 
 
+def parse_two_pizza_names(text: str) -> tuple:
+    """Detecta quando usuário digita dois nomes de pizza. Ex: '4 queijos e calabresa', 'portuguesa e frango'"""
+    text_lower = text.lower().strip()
+
+    # Separadores possíveis: " e ", " com ", " + "
+    separators = [' e ', ' com ', ' + ', ', ']
+
+    for sep in separators:
+        if sep in text_lower:
+            parts = text_lower.split(sep, 1)  # Divide apenas na primeira ocorrência
+            if len(parts) == 2:
+                part1 = parts[0].strip()
+                part2 = parts[1].strip()
+
+                # Tenta encontrar cada parte como pizza
+                if part1 and part2:
+                    pizza1 = find_product_fuzzy(part1)
+                    pizza2 = find_product_fuzzy(part2)
+
+                    if pizza1 and pizza2:
+                        return pizza1, pizza2
+
+    return None
+
+
 def handle_half_or_full(phone: str, message: str) -> str:
     """Trata escolha entre meio a meio ou duas pizzas inteiras."""
     message_lower = message.lower().strip()
@@ -983,9 +1008,28 @@ def handle_promo_pizza_1(phone: str, message: str) -> str:
                 f"_'voltar' | 'cancelar'_"
             )
 
+    # Verifica se digitou dois nomes de pizza (ex: "4 queijos e calabresa")
+    two_pizzas = parse_two_pizza_names(message)
+    if two_pizzas:
+        pizza1, pizza2 = two_pizzas
+        set_conversation_state(phone, "awaiting_promo_half_or_full", {
+            "promo": True,
+            "pizza1_id": pizza1.id,
+            "pizza2_id": pizza2.id,
+            "pizza1_name": pizza1.name,
+            "pizza2_name": pizza2.name,
+        })
+        return (
+            f"Você escolheu *{pizza1.name}* e *{pizza2.name}*\n\n"
+            f"Como você quer na promoção?\n\n"
+            f"1️⃣ *Meio a meio* (uma pizza com metade de cada + uma inteira)\n"
+            f"2️⃣ *Duas pizzas inteiras* (uma de cada sabor)\n\n"
+            f"_'voltar' | 'cancelar'_"
+        )
+
     product = find_product_fuzzy(message)
     if not product:
-        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode digitar '1 e 2' para escolher dois sabores!_\n\n_'voltar' | 'sair'_"
+        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode digitar '4 queijos e calabresa' para escolher dois sabores!_\n\n_'voltar' | 'sair'_"
 
     pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
 
@@ -1164,10 +1208,48 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
                 f"_'voltar' | 'sair'_"
             )
 
+    # Verifica se digitou dois nomes de pizza para meio a meio (ex: "4 queijos e calabresa")
+    two_pizzas = parse_two_pizza_names(message)
+    if two_pizzas:
+        half_pizza1, half_pizza2 = two_pizzas
+
+        # Segunda pizza será meio a meio
+        promo_price = Decimal('27.50')
+
+        items = [
+            {"product_id": pizza_1.id, "quantity": 1, "promo_price": float(promo_price)},
+            {
+                "type": "half_half",
+                "pizza1_id": half_pizza1.id,
+                "pizza2_id": half_pizza2.id,
+                "pizza1_name": half_pizza1.name,
+                "pizza2_name": half_pizza2.name,
+                "price": float(promo_price),
+                "quantity": 1
+            }
+        ]
+
+        set_conversation_state(phone, "awaiting_promo_order_type", {
+            "items": items,
+            "promo": True,
+            "pizza_1_name": pizza_1.name,
+            "pizza_2_name": f"½ {half_pizza1.name} + ½ {half_pizza2.name}"
+        })
+
+        return (
+            f"Perfeito! ✅ Segunda pizza: *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n\n"
+            f"🍕 *{pizza_1.name}* + *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n"
+            f"💰 *Total da promoção: R$ 55,00*\n\n"
+            f"Vai ser pra *entrega* ou *retirada*? 🛵🏪\n\n"
+            f"1️⃣ Entrega (delivery)\n"
+            f"2️⃣ Retirada no local\n\n"
+            f"_'voltar' | 'sair'_"
+        )
+
     product = find_product_fuzzy(message)
     if not product:
         logger.warning(f"DEBUG: find_product_fuzzy retornou None para '{message}'")
-        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode digitar '1 e 4' para meio a meio!_\n\n_'voltar' | 'sair'_"
+        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode digitar '4 queijos e calabresa' para meio a meio!_\n\n_'voltar' | 'sair'_"
 
     # Define os itens com preço especial da promoção (R$ 27,50 cada = R$ 55 total)
     promo_price = Decimal('27.50')
