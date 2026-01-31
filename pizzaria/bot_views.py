@@ -2350,9 +2350,29 @@ def bot_webhook(request):
         msg_type = 'chat'
 
     media_url = None
-    if msg_type == 'image' or payload.get('hasMedia'):
+    if msg_type == 'image' or payload.get('hasMedia') or payload.get('media'):
+        # Tenta várias formas de obter a URL da mídia
         media = payload.get('media', {})
+
+        # Formato 1: media.url
         media_url = media.get('url') if media else None
+
+        # Formato 2: mediaUrl direto no payload
+        if not media_url:
+            media_url = payload.get('mediaUrl')
+
+        # Formato 3: _data.media.url
+        if not media_url:
+            _data = payload.get('_data', {})
+            _media = _data.get('media', {})
+            media_url = _media.get('url') if _media else None
+
+        # Formato 4: media.link
+        if not media_url and media:
+            media_url = media.get('link')
+
+        logger.info(f"MÍDIA DETECTADA - tipo: {msg_type}, hasMedia: {payload.get('hasMedia')}, media_url: {media_url}")
+        logger.info(f"PAYLOAD COMPLETO DA MÍDIA: {json.dumps(payload, default=str)[:500]}")
 
     # Extrai nome do cliente se disponível
     _data = payload.get('_data', {})
