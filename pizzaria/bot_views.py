@@ -1742,8 +1742,16 @@ def handle_awaiting_address(phone: str, message: str) -> str:
 
     # Se não encontrou, tenta buscar nas ÚLTIMAS palavras do endereço (onde geralmente fica o bairro)
     if not neighborhood:
-        # Remove números e palavras comuns de endereço
-        palavras_ignorar = ['rua', 'avenida', 'av', 'travessa', 'tv', 'alameda', 'al', 'numero', 'num', 'nº', 'n', 'casa', 'apt', 'apto', 'apartamento', 'bloco', 'bl', 'quadra', 'qd', 'lote', 'lt', 'e', 'de', 'do', 'da', 'dos', 'das', 'meio']
+        # Remove números e palavras comuns de endereço (inclui números por extenso comuns em nomes de ruas)
+        palavras_ignorar = [
+            'rua', 'avenida', 'av', 'travessa', 'tv', 'alameda', 'al', 'numero', 'num', 'nº', 'n',
+            'casa', 'apt', 'apto', 'apartamento', 'bloco', 'bl', 'quadra', 'qd', 'lote', 'lt',
+            'e', 'de', 'do', 'da', 'dos', 'das', 'meio',
+            # Números por extenso (comuns em nomes de ruas)
+            'zero', 'um', 'uma', 'dois', 'duas', 'tres', 'três', 'quatro', 'cinco',
+            'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze',
+            'primeiro', 'primeira', 'segundo', 'segunda', 'terceiro', 'terceira',
+        ]
         words = [w for w in message_lower.replace(',', ' ').split() if w not in palavras_ignorar and not w.isdigit() and len(w) >= 4]
 
         # Busca do final para o início (bairro geralmente é a última palavra)
