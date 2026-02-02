@@ -3,6 +3,29 @@
 {% block title %}Configuracoes - Pizzaria do Negao{% endblock %}
 
 {% block content %}
+<!-- Card de Controle do Chatbot -->
+<div class="card" style="margin-bottom: 1.5rem; border: 2px solid {% if settings.chatbot_enabled %}var(--accent-green){% else %}var(--accent-red){% endif %};">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Chatbot WhatsApp</h3>
+        <span style="padding: 0.5rem 1rem; border-radius: 20px; font-weight: bold; background: {% if settings.chatbot_enabled %}var(--accent-green){% else %}var(--accent-red){% endif %}; color: white;">
+            {% if settings.chatbot_enabled %}ATIVO{% else %}DESATIVADO{% endif %}
+        </span>
+    </div>
+    <form method="post" action="{% url 'toggle_chatbot' %}" style="padding: 1rem;">
+        {% csrf_token %}
+        <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+            {% if settings.chatbot_enabled %}
+                O chatbot esta respondendo mensagens automaticamente.
+            {% else %}
+                O chatbot esta pausado. As mensagens nao serao respondidas.
+            {% endif %}
+        </p>
+        <button type="submit" class="btn {% if settings.chatbot_enabled %}btn-danger{% else %}btn-success{% endif %}">
+            {% if settings.chatbot_enabled %}Desativar Chatbot{% else %}Ativar Chatbot{% endif %}
+        </button>
+    </form>
+</div>
+
 <div class="card">
     <div class="card-header">
         <h3>Configuracoes do Negocio</h3>

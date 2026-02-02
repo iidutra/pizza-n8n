@@ -184,6 +184,22 @@ def settings_view(request):
 
 
 @login_required
+@require_POST
+def toggle_chatbot(request):
+    """Ativa/desativa o chatbot."""
+    settings_obj = BusinessSettings.get_settings()
+    settings_obj.chatbot_enabled = not settings_obj.chatbot_enabled
+    settings_obj.save()
+
+    if settings_obj.chatbot_enabled:
+        messages.success(request, 'Chatbot ativado!')
+    else:
+        messages.warning(request, 'Chatbot desativado!')
+
+    return redirect('settings')
+
+
+@login_required
 def reports_view(request):
     """Tela de relatorios."""
     period = request.GET.get('period', 'today')

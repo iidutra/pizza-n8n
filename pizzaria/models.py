@@ -156,6 +156,7 @@ class BusinessSettings(models.Model):
     promo_image = models.ImageField(upload_to='config/', blank=True, verbose_name='Imagem da Promocao')
     promo_text = models.TextField(blank=True, verbose_name='Texto da Promocao')
     promo_active = models.BooleanField(default=False, verbose_name='Promocao Ativa')
+    chatbot_enabled = models.BooleanField(default=True, verbose_name='Chatbot Ativo')
 
     class Meta:
         verbose_name = 'Configuracao'

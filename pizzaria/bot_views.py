@@ -2389,6 +2389,12 @@ def bot_webhook(request):
     if payload.get('fromMe', False):
         return JsonResponse({"status": "ignored"})
 
+    # Verifica se o chatbot está ativo
+    settings_obj = BusinessSettings.get_settings()
+    if not settings_obj.chatbot_enabled:
+        logger.info("Chatbot desativado - mensagem ignorada")
+        return JsonResponse({"status": "ignored", "reason": "chatbot_disabled"})
+
     # IMPORTANTE: Ignora mensagens antigas para evitar disparo em massa ao reconectar
     current_time = int(time.time())
 

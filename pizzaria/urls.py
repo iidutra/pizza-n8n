@@ -37,6 +37,7 @@ urlpatterns = [
     path('menu/', panel_views.menu_view, name='menu'),
     path('delivery-fees/', panel_views.delivery_fees_view, name='delivery_fees'),
     path('settings/', panel_views.settings_view, name='settings'),
+    path('settings/toggle-chatbot/', panel_views.toggle_chatbot, name='toggle_chatbot'),
     path('reports/', panel_views.reports_view, name='reports'),
 
     # AJAX Actions
