@@ -206,6 +206,8 @@ def go_back_state(phone: str) -> tuple:
         "awaiting_promo_half_or_full": "Promoção - como você quer?\n1. Meio a meio\n2. Duas pizzas inteiras",
         "awaiting_promo_second_after_half": "Promoção meio a meio! Qual o segundo sabor?",
         "awaiting_more_promo": "Quer mais uma promoção?\n1. Sim, quero mais 2 pizzas por R$ 55\n2. Não, só isso",
+        "awaiting_promo_more_items": "Quer adicionar mais pizza?\n1. Mais promoção (2 por R$55)\n2. Pizza avulsa\n3. Não, só isso",
+        "awaiting_promo_another_item": "Qual pizza você quer adicionar?",
     }
 
     return True, state_messages.get(previous["state"], "Qual e o seu pedido para hoje?") + get_help_text()
@@ -1117,20 +1119,20 @@ def handle_promo_half_or_full(phone: str, message: str) -> str:
             {"product_id": pizza1.id, "quantity": 1, "promo_price": float(promo_price)},
             {"product_id": pizza2.id, "quantity": 1, "promo_price": float(promo_price)}
         ]
-        set_conversation_state(phone, "awaiting_promo_order_type", {
+        set_conversation_state(phone, "awaiting_promo_more_items", {
             "items": new_items,
             "promo": True,
             "pizza_1_name": pizza1.name,
             "pizza_2_name": pizza2.name,
-            "order_type": order_type,
         })
         return (
             f"Perfeito! ✅\n\n"
             f"🍕 *{pizza1.name}* + *{pizza2.name}*\n"
             f"💰 *Total da promoção: R$ 55,00*\n\n"
-            f"Vai ser pra *entrega* ou *retirada*? 🛵🏪\n\n"
-            f"1️⃣ Entrega (delivery)\n"
-            f"2️⃣ Retirada no local\n\n"
+            f"Quer adicionar mais pizza?\n"
+            f"1️⃣ Mais promoção (2 por R$55)\n"
+            f"2️⃣ Pizza avulsa\n"
+            f"3️⃣ Não, só isso\n\n"
             f"_'voltar' | 'sair'_"
         )
 
@@ -1160,12 +1162,11 @@ def handle_promo_second_after_half(phone: str, message: str) -> str:
     pizza1_name = half_half.get("pizza1_name", "") if half_half else ""
     pizza2_name = half_half.get("pizza2_name", "") if half_half else ""
 
-    set_conversation_state(phone, "awaiting_promo_order_type", {
+    set_conversation_state(phone, "awaiting_promo_more_items", {
         "items": items,
         "promo": True,
         "pizza_1_name": f"½ {pizza1_name} + ½ {pizza2_name}",
         "pizza_2_name": product.name,
-        "order_type": order_type,
     })
 
     return (
@@ -1173,9 +1174,10 @@ def handle_promo_second_after_half(phone: str, message: str) -> str:
         f"🍕 *½ {pizza1_name} + ½ {pizza2_name}* (meio a meio)\n"
         f"🍕 *{product.name}*\n"
         f"💰 *Total da promoção: R$ 55,00*\n\n"
-        f"Vai ser pra *entrega* ou *retirada*? 🛵🏪\n\n"
-        f"1️⃣ Entrega (delivery)\n"
-        f"2️⃣ Retirada no local\n\n"
+        f"Quer adicionar mais pizza?\n"
+        f"1️⃣ Mais promoção (2 por R$55)\n"
+        f"2️⃣ Pizza avulsa\n"
+        f"3️⃣ Não, só isso\n\n"
         f"_'voltar' | 'sair'_"
     )
 
@@ -1220,21 +1222,21 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
                 }
             ]
 
-            set_conversation_state(phone, "awaiting_promo_order_type", {
+            set_conversation_state(phone, "awaiting_promo_more_items", {
                 "items": new_items,
                 "promo": True,
                 "pizza_1_name": pizza_1.name,
                 "pizza_2_name": f"½ {half_pizza1.name} + ½ {half_pizza2.name}",
-                "order_type": order_type,
             })
 
             return (
                 f"Perfeito! ✅ Segunda pizza: *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n\n"
                 f"🍕 *{pizza_1.name}* + *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n"
                 f"💰 *Total da promoção: R$ 55,00*\n\n"
-                f"Vai ser pra *entrega* ou *retirada*? 🛵🏪\n\n"
-                f"1️⃣ Entrega (delivery)\n"
-                f"2️⃣ Retirada no local\n\n"
+                f"Quer adicionar mais pizza?\n"
+                f"1️⃣ Mais promoção (2 por R$55)\n"
+                f"2️⃣ Pizza avulsa\n"
+                f"3️⃣ Não, só isso\n\n"
                 f"_'voltar' | 'sair'_"
             )
 
@@ -1259,21 +1261,21 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
             }
         ]
 
-        set_conversation_state(phone, "awaiting_promo_order_type", {
+        set_conversation_state(phone, "awaiting_promo_more_items", {
             "items": new_items,
             "promo": True,
             "pizza_1_name": pizza_1.name,
             "pizza_2_name": f"½ {half_pizza1.name} + ½ {half_pizza2.name}",
-            "order_type": order_type,
         })
 
         return (
             f"Perfeito! ✅ Segunda pizza: *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n\n"
             f"🍕 *{pizza_1.name}* + *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n"
             f"💰 *Total da promoção: R$ 55,00*\n\n"
-            f"Vai ser pra *entrega* ou *retirada*? 🛵🏪\n\n"
-            f"1️⃣ Entrega (delivery)\n"
-            f"2️⃣ Retirada no local\n\n"
+            f"Quer adicionar mais pizza?\n"
+            f"1️⃣ Mais promoção (2 por R$55)\n"
+            f"2️⃣ Pizza avulsa\n"
+            f"3️⃣ Não, só isso\n\n"
             f"_'voltar' | 'sair'_"
         )
 
@@ -1289,21 +1291,21 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
         {"product_id": product.id, "quantity": 1, "promo_price": float(promo_price)}
     ]
 
-    set_conversation_state(phone, "awaiting_promo_order_type", {
+    set_conversation_state(phone, "awaiting_promo_more_items", {
         "items": new_items,
         "promo": True,
         "pizza_1_name": pizza_1.name,
         "pizza_2_name": product.name,
-        "order_type": order_type,
     })
 
     return (
         f"Perfeito! ✅ Segunda pizza: *{product.name}*\n\n"
         f"🍕 *{pizza_1.name}* + *{product.name}*\n"
         f"💰 *Total da promoção: R$ 55,00*\n\n"
-        f"Vai ser pra *entrega* ou *retirada*? 🛵🏪\n\n"
-        f"1️⃣ Entrega (delivery)\n"
-        f"2️⃣ Retirada no local\n\n"
+        f"Quer adicionar mais pizza?\n"
+        f"1️⃣ Mais promoção (2 por R$55)\n"
+        f"2️⃣ Pizza avulsa\n"
+        f"3️⃣ Não, só isso\n\n"
         f"_'voltar' | 'sair'_"
     )
 
@@ -1316,31 +1318,21 @@ def handle_promo_order_type(phone: str, message: str) -> str:
 
     # Entrega
     if message_lower in ['1', 'entrega', 'delivery', 'entregar']:
-        set_conversation_state(phone, "awaiting_more_promo", {
+        set_conversation_state(phone, "awaiting_drink", {
             "items": items,
             "order_type": "DELIVERY",
             "promo": True
         })
-        return (
-            f"Quer aproveitar mais uma promoção? 🔥\n\n"
-            f"1️⃣ Sim, quero mais 2 pizzas por R$ 55\n"
-            f"2️⃣ Não, só isso\n\n"
-            f"_'voltar' | 'sair'_"
-        )
+        return get_drinks_menu()
 
     # Retirada
     if message_lower in ['2', 'retirada', 'retirar', 'buscar', 'pickup']:
-        set_conversation_state(phone, "awaiting_more_promo", {
+        set_conversation_state(phone, "awaiting_drink_pickup", {
             "items": items,
             "order_type": "PICKUP",
             "promo": True
         })
-        return (
-            f"Quer aproveitar mais uma promoção? 🔥\n\n"
-            f"1️⃣ Sim, quero mais 2 pizzas por R$ 55\n"
-            f"2️⃣ Não, só isso\n\n"
-            f"_'voltar' | 'sair'_"
-        )
+        return get_drinks_menu()
 
     return "Não entendi 😅 Digita 1 pra entrega ou 2 pra retirada!\n\n_'voltar' | 'sair'_"
 
@@ -1385,6 +1377,121 @@ def handle_more_promo(phone: str, message: str) -> str:
         return get_drinks_menu()
 
     return "Não entendi 😅 Digita 1 pra mais promoção ou 2 pra continuar!\n\n_'voltar' | 'sair'_"
+
+
+def handle_promo_more_items(phone: str, message: str) -> str:
+    """Trata pergunta se quer mais pizzas após promoção (antes de escolher entrega/retirada)."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    items = state["data"].get("items", [])
+    pizza_1_name = state["data"].get("pizza_1_name", "")
+    pizza_2_name = state["data"].get("pizza_2_name", "")
+
+    # Opção 1: Mais uma promoção (2 pizzas por R$55)
+    if message_lower in ['1', 'promocao', 'promoção', 'promo']:
+        set_conversation_state(phone, "awaiting_promo_pizza_1", {
+            "items": items,
+            "promo": True,
+        })
+
+        pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
+        menu = "Mais uma promoção! 🔥 Qual o *primeiro* sabor?\n\n"
+        for i, pizza in enumerate(pizzas, 1):
+            menu += f"{i}. {pizza.name}\n"
+        menu += "\n_Dica: pode digitar '1 e 4' ou '4 queijos e calabresa' para meio a meio!_\n\n_'voltar' | 'sair'_"
+        return menu
+
+    # Opção 2: Adicionar pizza avulsa
+    if message_lower in ['2', 'avulsa', 'avulso', 'uma']:
+        set_conversation_state(phone, "awaiting_promo_another_item", {
+            "items": items,
+            "promo": True,
+            "pizza_1_name": pizza_1_name,
+            "pizza_2_name": pizza_2_name,
+        })
+
+        pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
+        menu = "Beleza! Qual sabor avulso? 🍕\n\n"
+        for i, pizza in enumerate(pizzas, 1):
+            menu += f"{i}. {pizza.name} - R$ {pizza.price:.2f}\n"
+        menu += "\n_Digite o número ou nome | 'voltar' | 'sair'_"
+        return menu
+
+    # Opção 3: Não quer mais
+    if message_lower in ['3', 'nao', 'não', 'n', 'so isso', 'só isso', 'essa', 'so essa', 'só essa']:
+        set_conversation_state(phone, "awaiting_promo_order_type", {
+            "items": items,
+            "promo": True,
+            "pizza_1_name": pizza_1_name,
+            "pizza_2_name": pizza_2_name,
+        })
+        return (
+            f"Beleza! 👍\n\n"
+            f"Vai ser pra *entrega* ou *retirada*? 🛵🏪\n\n"
+            f"1️⃣ Entrega (delivery)\n"
+            f"2️⃣ Retirada no local\n\n"
+            f"_'voltar' | 'sair'_"
+        )
+
+    return "Não entendi 😅\n\n1️⃣ Mais promoção (2 por R$55)\n2️⃣ Pizza avulsa\n3️⃣ Não, só isso\n\n_'voltar' | 'sair'_"
+
+
+def handle_promo_another_item(phone: str, message: str) -> str:
+    """Trata adição de pizza extra após promoção."""
+    state = get_conversation_state(phone)
+    items = state["data"].get("items", [])
+    pizza_1_name = state["data"].get("pizza_1_name", "")
+    pizza_2_name = state["data"].get("pizza_2_name", "")
+
+    # Verifica se é pedido meio a meio
+    if is_half_half_request(message):
+        sabor1_text, sabor2_text = parse_half_half(message)
+        if sabor1_text and sabor2_text:
+            pizza1 = find_product_fuzzy(sabor1_text)
+            pizza2 = find_product_fuzzy(sabor2_text)
+            if pizza1 and pizza2:
+                preco = max(pizza1.price, pizza2.price)
+                items.append({
+                    "type": "half_half",
+                    "pizza1_id": pizza1.id,
+                    "pizza2_id": pizza2.id,
+                    "pizza1_name": pizza1.name,
+                    "pizza2_name": pizza2.name,
+                    "price": float(preco),
+                    "quantity": 1
+                })
+                set_conversation_state(phone, "awaiting_promo_more_items", {
+                    "items": items,
+                    "promo": True,
+                    "pizza_1_name": pizza_1_name,
+                    "pizza_2_name": pizza_2_name,
+                })
+                return (
+                    f"Anotado! ✅ *½ {pizza1.name} + ½ {pizza2.name}* - R$ {preco:.2f}\n\n"
+                    f"Mais alguma pizza?\n"
+                    f"1️⃣ Quero mais\n"
+                    f"2️⃣ Só isso\n\n"
+                    f"_'voltar' | 'sair'_"
+                )
+
+    product = find_product_fuzzy(message)
+    if not product:
+        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_'voltar' | 'sair'_"
+
+    items.append({"product_id": product.id, "quantity": 1})
+    set_conversation_state(phone, "awaiting_promo_more_items", {
+        "items": items,
+        "promo": True,
+        "pizza_1_name": pizza_1_name,
+        "pizza_2_name": pizza_2_name,
+    })
+    return (
+        f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}\n\n"
+        f"Mais alguma pizza?\n"
+        f"1️⃣ Quero mais\n"
+        f"2️⃣ Só isso\n\n"
+        f"_'voltar' | 'sair'_"
+    )
 
 
 def handle_awaiting_more_items(phone: str, message: str) -> str:
@@ -2447,6 +2554,16 @@ def bot_webhook(request):
     if not msg_type:
         msg_type = 'chat'
 
+    # Verifica também no _data.Type para pegar o tipo real da mídia
+    _data = payload.get('_data', {})
+    media_type = _data.get('Type', '')
+
+    # Se o tipo no _data indica áudio, usa ele
+    if media_type and media_type.lower() in ['ptt', 'audio', 'voice']:
+        msg_type = media_type.lower()
+
+    logger.info(f"DEBUG TIPO: msg_type={msg_type}, media_type={media_type}, hasMedia={payload.get('hasMedia')}")
+
     media_url = None
     if msg_type == 'image' or payload.get('hasMedia') or payload.get('media'):
         # Tenta várias formas de obter a URL da mídia
@@ -2486,7 +2603,9 @@ def bot_webhook(request):
     logger.info(f"Mensagem de {phone}: {body[:50]}... (estado: {current_state})")
 
     # Verifica se é mensagem de áudio em qualquer estado
-    if msg_type in ['ptt', 'audio']:
+    audio_types = ['ptt', 'audio', 'voice', 'audio_message']
+    if msg_type in audio_types or media_type.lower() in audio_types:
+        logger.info(f"ÁUDIO DETECTADO - msg_type={msg_type}, media_type={media_type}")
         response = (
             f"Oi! Infelizmente não consigo ouvir áudios 😅\n\n"
             f"Mas você pode ligar pra gente:\n"
@@ -2519,6 +2638,12 @@ def bot_webhook(request):
 
     elif current_state == "awaiting_promo_pizza_2":
         response = handle_promo_pizza_2(phone, body)
+
+    elif current_state == "awaiting_promo_more_items":
+        response = handle_promo_more_items(phone, body)
+
+    elif current_state == "awaiting_promo_another_item":
+        response = handle_promo_another_item(phone, body)
 
     elif current_state == "awaiting_promo_order_type":
         response = handle_promo_order_type(phone, body)
