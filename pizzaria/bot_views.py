@@ -791,6 +791,10 @@ def handle_half_or_full(phone: str, message: str) -> str:
     pizza1_name = state["data"].get("pizza1_name")
     pizza2_name = state["data"].get("pizza2_name")
 
+    # Observações já salvas anteriormente
+    obs1 = state["data"].get("pizza1_obs", "")
+    obs2 = state["data"].get("pizza2_obs", "")
+
     try:
         pizza1 = Product.objects.get(id=pizza1_id)
         pizza2 = Product.objects.get(id=pizza2_id)
@@ -798,9 +802,65 @@ def handle_half_or_full(phone: str, message: str) -> str:
         clear_conversation_state(phone)
         return "Ops, algo deu errado 😅 Vamos recomeçar!"
 
+    # Detecta se é uma observação (ex: "calabresa sem cebola", "sem cebola na calabresa")
+    obs_patterns = ['sem ', 'tirar ', 'com extra ', 'adicionar ', 'sem a ', 'tira ']
+    has_observation = any(p in message_lower for p in obs_patterns)
+
+    if has_observation:
+        # Tenta identificar qual pizza a observação se refere
+        pizza1_lower = pizza1.name.lower()
+        pizza2_lower = pizza2.name.lower()
+
+        # Extrai a observação
+        _, observation = extract_observation(message)
+        if not observation:
+            observation = message_lower
+
+        # Verifica se menciona qual pizza
+        if pizza1_lower in message_lower or any(word in message_lower for word in pizza1_lower.split()):
+            obs1 = observation
+            pizza_ref = pizza1.name
+        elif pizza2_lower in message_lower or any(word in message_lower for word in pizza2_lower.split()):
+            obs2 = observation
+            pizza_ref = pizza2.name
+        else:
+            # Não identificou qual pizza, assume a primeira
+            obs1 = observation
+            pizza_ref = pizza1.name
+
+        # Salva observação no estado e pergunta novamente
+        set_conversation_state(phone, "awaiting_half_or_full", {
+            **state["data"],
+            "pizza1_obs": obs1,
+            "pizza2_obs": obs2
+        })
+
+        obs_list = []
+        if obs1:
+            obs_list.append(f"• {pizza1.name}: _{obs1}_")
+        if obs2:
+            obs_list.append(f"• {pizza2.name}: _{obs2}_")
+        obs_text = "\n".join(obs_list)
+
+        return (
+            f"Anotei! ✅ *{pizza_ref}*: _{observation}_\n\n"
+            f"📝 *Observações:*\n{obs_text}\n\n"
+            f"Agora escolhe como quer:\n"
+            f"1️⃣ Meio a meio (uma pizza com metade de cada + uma inteira)\n"
+            f"2️⃣ Duas pizzas inteiras (uma de cada sabor)\n\n"
+            f"_'voltar' | 'cancelar'_"
+        )
+
     # Meio a meio
     if message_lower in ['1', 'meio', 'metade', 'meio a meio', 'meia']:
         preco = max(pizza1.price, pizza2.price)
+        obs_combined = []
+        if obs1:
+            obs_combined.append(f"{pizza1.name}: {obs1}")
+        if obs2:
+            obs_combined.append(f"{pizza2.name}: {obs2}")
+        observation = " | ".join(obs_combined) if obs_combined else None
+
         set_conversation_state(phone, "awaiting_observation", {
             "order_type": "DELIVERY",
             "current_item": {
@@ -809,33 +869,39 @@ def handle_half_or_full(phone: str, message: str) -> str:
                 "pizza2_id": pizza2.id,
                 "pizza1_name": pizza1.name,
                 "pizza2_name": pizza2.name,
-                "price": float(preco)
+                "price": float(preco),
+                "observation": observation
             },
             "items": []
         })
+
+        obs_msg = f"\n📝 _{observation}_" if observation else ""
         return (
             f"Boa! 🍕 *Meio a Meio:*\n"
             f"½ {pizza1.name} + ½ {pizza2.name}\n"
-            f"💰 R$ {preco:.2f}\n\n"
-            f"Alguma observação? (tirar cebola, sem tomate, etc)\n\n"
+            f"💰 R$ {preco:.2f}{obs_msg}\n\n"
+            f"Mais alguma observação? (tirar cebola, sem tomate, etc)\n\n"
             f"_Digite a observação ou 'não' se não tiver_"
         )
 
     # Duas pizzas inteiras
     if message_lower in ['2', 'duas', 'inteira', 'inteiras', 'separadas', 'separado']:
         items = [
-            {"type": "single", "product_id": pizza1.id, "quantity": 1, "price": float(pizza1.price)},
-            {"type": "single", "product_id": pizza2.id, "quantity": 1, "price": float(pizza2.price)}
+            {"type": "single", "product_id": pizza1.id, "quantity": 1, "price": float(pizza1.price), "observation": obs1 or None},
+            {"type": "single", "product_id": pizza2.id, "quantity": 1, "price": float(pizza2.price), "observation": obs2 or None}
         ]
         total = pizza1.price + pizza2.price
         set_conversation_state(phone, "awaiting_more_items", {
             "order_type": "DELIVERY",
             "items": items
         })
+
+        obs1_text = f" _{obs1}_" if obs1 else ""
+        obs2_text = f" _{obs2}_" if obs2 else ""
         return (
             f"Anotado! ✅\n\n"
-            f"• 1x *{pizza1.name}* - R$ {pizza1.price:.2f}\n"
-            f"• 1x *{pizza2.name}* - R$ {pizza2.price:.2f}\n"
+            f"• 1x *{pizza1.name}* - R$ {pizza1.price:.2f}{obs1_text}\n"
+            f"• 1x *{pizza2.name}* - R$ {pizza2.price:.2f}{obs2_text}\n"
             f"💰 Subtotal: R$ {total:.2f}\n\n"
             f"Quer mais alguma pizza?\n"
             f"1️⃣ Quero mais\n"
@@ -1438,6 +1504,10 @@ def handle_promo_half_or_full(phone: str, message: str) -> str:
     existing_items = state["data"].get("existing_items", [])
     order_type = state["data"].get("order_type", "DELIVERY")
 
+    # Observações já salvas anteriormente
+    obs1 = state["data"].get("pizza1_obs", "")
+    obs2 = state["data"].get("pizza2_obs", "")
+
     try:
         pizza1 = Product.objects.get(id=pizza1_id)
         pizza2 = Product.objects.get(id=pizza2_id)
@@ -1447,9 +1517,65 @@ def handle_promo_half_or_full(phone: str, message: str) -> str:
 
     promo_price = Decimal('27.50')
 
+    # Detecta se é uma observação (ex: "calabresa sem cebola", "sem cebola na calabresa")
+    obs_patterns = ['sem ', 'tirar ', 'com extra ', 'adicionar ', 'sem a ', 'tira ']
+    has_observation = any(p in message_lower for p in obs_patterns)
+
+    if has_observation:
+        # Tenta identificar qual pizza a observação se refere
+        pizza1_lower = pizza1.name.lower()
+        pizza2_lower = pizza2.name.lower()
+
+        # Extrai a observação
+        _, observation = extract_observation(message)
+        if not observation:
+            observation = message_lower
+
+        # Verifica se menciona qual pizza
+        if pizza1_lower in message_lower or any(word in message_lower for word in pizza1_lower.split()):
+            obs1 = observation
+            pizza_ref = pizza1.name
+        elif pizza2_lower in message_lower or any(word in message_lower for word in pizza2_lower.split()):
+            obs2 = observation
+            pizza_ref = pizza2.name
+        else:
+            # Não identificou qual pizza, assume a primeira
+            obs1 = observation
+            pizza_ref = pizza1.name
+
+        # Salva observação no estado e pergunta novamente
+        set_conversation_state(phone, "awaiting_promo_half_or_full", {
+            **state["data"],
+            "pizza1_obs": obs1,
+            "pizza2_obs": obs2
+        })
+
+        obs_list = []
+        if obs1:
+            obs_list.append(f"• {pizza1.name}: _{obs1}_")
+        if obs2:
+            obs_list.append(f"• {pizza2.name}: _{obs2}_")
+        obs_text = "\n".join(obs_list)
+
+        return (
+            f"Anotei! ✅ *{pizza_ref}*: _{observation}_\n\n"
+            f"📝 *Observações:*\n{obs_text}\n\n"
+            f"Agora escolhe como quer:\n"
+            f"1️⃣ Meio a meio (uma pizza com metade de cada + uma inteira)\n"
+            f"2️⃣ Duas pizzas inteiras (uma de cada sabor)\n\n"
+            f"_'voltar' | 'cancelar'_"
+        )
+
     # Meio a meio - uma pizza meio a meio + precisa escolher a segunda
     if message_lower in ['1', 'meio', 'metade', 'meio a meio', 'meia']:
         preco = max(pizza1.price, pizza2.price)
+        obs_combined = []
+        if obs1:
+            obs_combined.append(f"{pizza1.name}: {obs1}")
+        if obs2:
+            obs_combined.append(f"{pizza2.name}: {obs2}")
+        observation = " | ".join(obs_combined) if obs_combined else None
+
         new_items = existing_items + [{
             "type": "half_half",
             "pizza1_id": pizza1.id,
@@ -1457,7 +1583,8 @@ def handle_promo_half_or_full(phone: str, message: str) -> str:
             "pizza1_name": pizza1.name,
             "pizza2_name": pizza2.name,
             "price": float(promo_price),
-            "promo_price": float(promo_price)
+            "promo_price": float(promo_price),
+            "observation": observation
         }]
         set_conversation_state(phone, "awaiting_promo_second_after_half", {
             "promo": True,
@@ -1465,9 +1592,10 @@ def handle_promo_half_or_full(phone: str, message: str) -> str:
             "order_type": order_type,
         })
         pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
+        obs_msg = f"\n📝 _{observation}_" if observation else ""
         menu = (
             f"Boa! 🍕 Primeira pizza: *Meio a Meio*\n"
-            f"½ {pizza1.name} + ½ {pizza2.name}\n\n"
+            f"½ {pizza1.name} + ½ {pizza2.name}{obs_msg}\n\n"
             f"Agora escolhe o sabor da *segunda pizza* da promoção:\n\n"
         )
         for i, pizza in enumerate(pizzas, 1):
@@ -1478,8 +1606,8 @@ def handle_promo_half_or_full(phone: str, message: str) -> str:
     # Duas pizzas inteiras
     if message_lower in ['2', 'duas', 'inteira', 'inteiras', 'separadas', 'separado']:
         new_items = existing_items + [
-            {"product_id": pizza1.id, "quantity": 1, "promo_price": float(promo_price)},
-            {"product_id": pizza2.id, "quantity": 1, "promo_price": float(promo_price)}
+            {"product_id": pizza1.id, "quantity": 1, "promo_price": float(promo_price), "observation": obs1 or None},
+            {"product_id": pizza2.id, "quantity": 1, "promo_price": float(promo_price), "observation": obs2 or None}
         ]
         set_conversation_state(phone, "awaiting_promo_more_items", {
             "items": new_items,
@@ -1487,9 +1615,11 @@ def handle_promo_half_or_full(phone: str, message: str) -> str:
             "pizza_1_name": pizza1.name,
             "pizza_2_name": pizza2.name,
         })
+        obs1_text = f" _{obs1}_" if obs1 else ""
+        obs2_text = f" _{obs2}_" if obs2 else ""
         return (
             f"Perfeito! ✅\n\n"
-            f"🍕 *{pizza1.name}* + *{pizza2.name}*\n"
+            f"🍕 *{pizza1.name}*{obs1_text} + *{pizza2.name}*{obs2_text}\n"
             f"💰 *Total da promoção: R$ 55,00*\n\n"
             f"Quer adicionar mais pizza?\n"
             f"1️⃣ Mais promoção (2 por R$55)\n"
@@ -1717,6 +1847,30 @@ def handle_promo_order_type(phone: str, message: str) -> str:
             "promo": True
         })
         return get_drinks_menu()
+
+    # Detecta se cliente já mandou o endereço junto (ex: "entrega na rua das flores 123")
+    address_indicators = ['rua ', 'av ', 'avenida ', 'travessa ', 'alameda ', 'estrada ']
+    has_address = any(ind in message_lower for ind in address_indicators) or re.search(r'\d{2,5}', message)
+
+    if has_address and any(word in message_lower for word in ['entrega', 'entregar', 'delivery', 'manda', 'leva']):
+        # Cliente quer entrega e já mandou o endereço
+        set_conversation_state(phone, "awaiting_address", {
+            "items": items,
+            "order_type": "DELIVERY",
+            "promo": True,
+            "pending_address": message  # Guarda para processar
+        })
+        # Processa o endereço diretamente
+        return handle_awaiting_address(phone, message)
+
+    # Se só tem indicador de endereço, assume entrega
+    if has_address:
+        set_conversation_state(phone, "awaiting_address", {
+            "items": items,
+            "order_type": "DELIVERY",
+            "promo": True
+        })
+        return handle_awaiting_address(phone, message)
 
     return "Não entendi 😅 Digita 1 pra entrega ou 2 pra retirada!\n\n_'voltar' | 'sair'_"
 
@@ -2131,21 +2285,37 @@ def handle_awaiting_drink(phone: str, message: str) -> str:
     message_lower = message.lower().strip()
     state = get_conversation_state(phone)
     items = state["data"].get("items", [])
+    order_type = state["data"].get("order_type", "DELIVERY")
+    is_promo = state["data"].get("promo", False)
 
     drinks = list(Product.objects.filter(category='BEBIDA', active=True).order_by('name'))
     no_drink_option = str(len(drinks) + 1)
 
-    # Verifica se não quer bebida
-    if message_lower in [no_drink_option, "nao", "não", "n", "nao obrigado", "não obrigado", "so pizza", "só pizza"]:
-        set_conversation_state(phone, "awaiting_address", {"items": items})
+    # Verifica se não quer bebida - várias formas
+    no_drink_variations = [
+        no_drink_option, "nao", "não", "n", "nao obrigado", "não obrigado",
+        "so pizza", "só pizza", "sem bebida", "nao quero", "não quero",
+        "dispensa", "passa", "pula", "nenhuma", "nada"
+    ]
+    if message_lower in no_drink_variations or any(v in message_lower for v in ['so pizza', 'só pizza', 'sem bebida', 'nao quero bebida', 'não quero bebida']):
+        set_conversation_state(phone, "awaiting_address", {"items": items, "order_type": order_type, "promo": is_promo})
         return "Beleza! 📍 Me passa o endereço completo pra entrega:\n(Rua, número e bairro)\n\n_'voltar' | 'sair'_"
 
     # Tenta encontrar a bebida
     drink = find_drink_by_option(message)
     if drink:
         items.append({"product_id": drink.id, "quantity": 1})
-        set_conversation_state(phone, "awaiting_address", {"items": items})
+        set_conversation_state(phone, "awaiting_address", {"items": items, "order_type": order_type, "promo": is_promo})
         return f"Boa! ✅ *{drink.name}* adicionado!\n\n📍 Me passa o endereço completo pra entrega:\n(Rua, número e bairro)\n\n_'voltar' | 'sair'_"
+
+    # Detecta se cliente já mandou o endereço junto com "sem bebida"
+    address_indicators = ['rua ', 'av ', 'avenida ', 'travessa ', 'alameda ', 'estrada ']
+    has_address = any(ind in message_lower for ind in address_indicators) or re.search(r'\d{2,5}', message)
+
+    if has_address:
+        # Cliente já mandou o endereço, pula bebida
+        set_conversation_state(phone, "awaiting_address", {"items": items, "order_type": order_type, "promo": is_promo})
+        return handle_awaiting_address(phone, message)
 
     # Não encontrou bebida válida
     return f"Não entendi 😅 Escolhe uma opção de 1 a {len(drinks)}, ou {no_drink_option} se não quiser bebida!\n\n_'voltar' | 'sair'_"
@@ -2165,8 +2335,13 @@ def handle_awaiting_drink_pickup(phone: str, message: str) -> str:
     customer = Customer.objects.filter(phone=phone).first()
     customer_name = customer.name if customer else None
 
-    # Verifica se não quer bebida
-    if message_lower in [no_drink_option, "nao", "não", "n", "nao obrigado", "não obrigado", "so pizza", "só pizza"]:
+    # Verifica se não quer bebida - várias formas
+    no_drink_variations = [
+        no_drink_option, "nao", "não", "n", "nao obrigado", "não obrigado",
+        "so pizza", "só pizza", "sem bebida", "nao quero", "não quero",
+        "dispensa", "passa", "pula", "nenhuma", "nada"
+    ]
+    if message_lower in no_drink_variations or any(v in message_lower for v in ['so pizza', 'só pizza', 'sem bebida', 'nao quero bebida', 'não quero bebida']):
         set_conversation_state(phone, "confirming_pickup", {"items": items, "promo": is_promo})
         summary = format_order_summary(items, order_type='PICKUP', is_promo=is_promo, customer_name=customer_name, customer_phone=phone)
         return (
@@ -2679,8 +2854,9 @@ def handle_payment_choice(phone: str, message: str) -> str:
 
     settings_obj = BusinessSettings.get_settings()
 
-    # 1. PIX
-    if message_lower in ['1', 'pix']:
+    # 1. PIX - aceita várias formas
+    pix_variations = ['1', 'pix', 'quero pix', 'pelo pix', 'no pix', 'via pix', 'transferencia', 'transferência']
+    if any(v in message_lower for v in pix_variations) or message_lower == 'pix':
         order.payment_method = 'PIX'
         order.save()
         set_conversation_state(phone, "awaiting_receipt", {"order_id": order.id})
@@ -2691,8 +2867,9 @@ def handle_payment_choice(phone: str, message: str) -> str:
             f"Me manda o *comprovante* (foto) aqui pra eu liberar seu pedido! 📸"
         )
 
-    # 2. Dinheiro
-    if message_lower in ['2', 'dinheiro', 'cash']:
+    # 2. Dinheiro - aceita várias formas
+    cash_variations = ['2', 'dinheiro', 'cash', 'em dinheiro', 'no dinheiro', 'especie', 'espécie', 'na entrega']
+    if any(v in message_lower for v in cash_variations) and 'cartao' not in message_lower and 'cartão' not in message_lower:
         order.payment_method = 'CASH'
         order.payment_status = 'PAY_ON_DELIVERY'
         order.save()
@@ -2703,8 +2880,9 @@ def handle_payment_choice(phone: str, message: str) -> str:
             f"_Digite o valor (ex: 100) ou 'não' se não precisar_"
         )
 
-    # 3. Cartão Crédito
-    if message_lower in ['3', 'credito', 'crédito', 'cartao credito', 'cartão crédito']:
+    # 3. Cartão Crédito - aceita várias formas
+    credit_variations = ['3', 'credito', 'crédito', 'cartao credito', 'cartão crédito', 'cartao de credito', 'cartão de crédito', 'no credito', 'no crédito']
+    if any(v in message_lower for v in credit_variations):
         order.payment_method = 'CREDIT'
         order.payment_status = 'PAY_ON_DELIVERY'
         order.card_fee = Decimal('2.00')
@@ -2723,8 +2901,9 @@ def handle_payment_choice(phone: str, message: str) -> str:
             f"Obrigado pela preferência! 😊"
         )
 
-    # 4. Cartão Débito
-    if message_lower in ['4', 'debito', 'débito', 'cartao debito', 'cartão débito']:
+    # 4. Cartão Débito - aceita várias formas
+    debit_variations = ['4', 'debito', 'débito', 'cartao debito', 'cartão débito', 'cartao de debito', 'cartão de débito', 'no debito', 'no débito']
+    if any(v in message_lower for v in debit_variations):
         order.payment_method = 'DEBIT'
         order.payment_status = 'PAY_ON_DELIVERY'
         order.card_fee = Decimal('2.00')
@@ -2741,6 +2920,17 @@ def handle_payment_choice(phone: str, message: str) -> str:
             f"Seu pedido já está sendo preparado! 🍕\n"
             f"Tempo estimado: 50-70 minutos\n\n"
             f"Obrigado pela preferência! 😊"
+        )
+
+    # Cartão genérico - pergunta crédito ou débito
+    card_variations = ['cartao', 'cartão', 'maquininha', 'maquina', 'máquina', 'card']
+    if any(v in message_lower for v in card_variations):
+        set_conversation_state(phone, "awaiting_card_type", {"order_id": order.id})
+        return (
+            f"Cartão! 💳 Qual tipo?\n\n"
+            f"1️⃣ Crédito\n"
+            f"2️⃣ Débito\n\n"
+            f"_(+R$ 2,00 taxa maquininha)_"
         )
 
     return (
@@ -2967,10 +3157,13 @@ def handle_card_type(phone: str, message: str) -> str:
         return "Ops, algo deu errado 😅 Faz um novo pedido aí!"
 
     card_type = None
-    if message_lower in ['1', 'credito', 'crédito', 'cred']:
+    credit_variations = ['1', 'credito', 'crédito', 'cred', 'no credito', 'no crédito', 'de credito', 'de crédito']
+    debit_variations = ['2', 'debito', 'débito', 'deb', 'no debito', 'no débito', 'de debito', 'de débito']
+
+    if any(v in message_lower for v in credit_variations):
         card_type = 'CREDIT'
         card_name = 'Crédito'
-    elif message_lower in ['2', 'debito', 'débito', 'deb']:
+    elif any(v in message_lower for v in debit_variations):
         card_type = 'DEBIT'
         card_name = 'Débito'
     else:
