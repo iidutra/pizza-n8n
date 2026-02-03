@@ -347,6 +347,7 @@ def go_back_state(phone: str) -> tuple:
         "awaiting_card_type": "Cartão: vai ser crédito ou débito?\n1. Crédito\n2. Débito",
         "awaiting_half_or_full": "Como você quer?\n1. Meio a meio\n2. Duas pizzas inteiras",
         "awaiting_promo_half_or_full": "Promoção - como você quer?\n1. Meio a meio\n2. Duas pizzas inteiras",
+        "awaiting_size_confirmation": "Só trabalhamos com pizza G (8 pedaços). Quer continuar?\n1. Sim\n2. Ver cardápio",
         "awaiting_promo_second_after_half": "Promoção meio a meio! Qual o segundo sabor?",
         "awaiting_more_promo": "Quer mais uma promoção?\n1. Sim, quero mais 2 pizzas por R$ 55\n2. Não, só isso",
         "awaiting_promo_more_items": "Quer adicionar mais pizza?\n1. Mais promoção (2 por R$55)\n2. Pizza avulsa\n3. Não, só isso",
@@ -3455,10 +3456,44 @@ def process_n8n_envelope(data: dict) -> JsonResponse:
     order_entities = entities.get('order', {})
     items = order_entities.get('items', [])
 
+    # Verifica se cliente pediu tamanho que não existe
+    if order_entities.get('invalid_size'):
+        # Encontra qual tamanho foi pedido
+        size_requested = None
+        for item in items:
+            if item.get('size_requested'):
+                size_requested = item.get('size_requested')
+                break
+
+        size_msg = f" ({size_requested})" if size_requested else ""
+        response = (
+            f"Opa! 😅 Aqui só trabalhamos com pizza tamanho *G* (Grande - 8 pedaços).{size_msg}\n\n"
+            f"Não temos tamanho P, M ou família.\n\n"
+            f"Quer continuar com a pizza *G*?\n"
+            f"1️⃣ Sim, pode ser G\n"
+            f"2️⃣ Não, vou ver o cardápio"
+        )
+        # Guarda os items para processar depois
+        set_conversation_state(phone, "awaiting_size_confirmation", {
+            "pending_items": items,
+            "order_entities": order_entities
+        })
+        send_whatsapp_message(phone, response)
+        return JsonResponse({"status": "ok", "action": "invalid_size_warning"})
+
+    # Verifica se é pedido de promoção com múltiplos pares
+    if order_entities.get('is_promo') and order_entities.get('promo_pairs'):
+        return process_llm_promo_pairs(phone, order_entities.get('promo_pairs'), order_entities)
+
     if intent == 'add_item' and items:
+        # Se é promoção, redireciona para fluxo de promo
+        if order_entities.get('is_promo'):
+            return process_llm_promo_items(phone, items, order_entities)
         return process_llm_add_item(phone, items, order_entities)
 
     if intent == 'order_build' and items:
+        if order_entities.get('is_promo'):
+            return process_llm_promo_items(phone, items, order_entities)
         return process_llm_order_build(phone, items, order_entities)
 
     if intent == 'provide_address':
@@ -3538,6 +3573,7 @@ def dispatch_state_handler(phone: str, text: str, msg_type: str, current_state: 
         "awaiting_half_or_full": lambda: handle_half_or_full(phone, text),
         "awaiting_promo_half_or_full": lambda: handle_promo_half_or_full(phone, text),
         "awaiting_promo_second_after_half": lambda: handle_promo_second_after_half(phone, text),
+        "awaiting_size_confirmation": lambda: handle_size_confirmation(phone, text),
     }
 
     handler = handlers.get(current_state, lambda: handle_welcome(phone, text, msg_type))
@@ -3625,6 +3661,209 @@ def process_llm_add_item(phone: str, items: list, order_entities: dict) -> JsonR
 def process_llm_order_build(phone: str, items: list, order_entities: dict) -> JsonResponse:
     """Processa intent order_build do LLM (múltiplos itens)."""
     return process_llm_add_item(phone, items, order_entities)
+
+
+def process_llm_promo_pairs(phone: str, promo_pairs: list, order_entities: dict) -> JsonResponse:
+    """Processa múltiplos pares de promoção do LLM."""
+    promo_price = Decimal('27.50')
+    items = []
+
+    for pair in promo_pairs:
+        if len(pair) >= 2:
+            pizza1 = find_product_fuzzy(pair[0])
+            pizza2 = find_product_fuzzy(pair[1])
+
+            if pizza1 and pizza2:
+                items.append({
+                    "product_id": pizza1.id,
+                    "quantity": 1,
+                    "promo_price": float(promo_price)
+                })
+                items.append({
+                    "product_id": pizza2.id,
+                    "quantity": 1,
+                    "promo_price": float(promo_price)
+                })
+
+    if items:
+        num_promos = len(promo_pairs)
+        total = promo_price * 2 * num_promos  # R$55 por par
+
+        set_conversation_state(phone, "awaiting_promo_more_items", {
+            "items": items,
+            "promo": True
+        })
+
+        summary = f"Beleza! 🔥 *{num_promos} PROMOÇÕES* (2 pizzas por R$55 cada)\n\n"
+        for i, pair in enumerate(promo_pairs, 1):
+            pizza1 = find_product_fuzzy(pair[0])
+            pizza2 = find_product_fuzzy(pair[1]) if len(pair) > 1 else None
+            if pizza1 and pizza2:
+                summary += f"*Promoção {i}:* {pizza1.name} + {pizza2.name}\n"
+
+        summary += f"\n💰 *Total: R$ {total:.2f}*\n\n"
+        summary += "Quer adicionar mais pizza?\n"
+        summary += "1️⃣ Mais promoção (2 por R$55)\n"
+        summary += "2️⃣ Pizza avulsa\n"
+        summary += "3️⃣ Não, só isso"
+
+        send_whatsapp_message(phone, summary)
+        return JsonResponse({"status": "ok", "action": "promo_pairs_added"})
+
+    # Fallback
+    return process_standard_message(phone, str(promo_pairs), 'chat')
+
+
+def process_llm_promo_items(phone: str, items: list, order_entities: dict) -> JsonResponse:
+    """Processa items de promoção do LLM."""
+    promo_price = Decimal('27.50')
+    promo_items = []
+
+    # Agrupa items em pares para promoção
+    all_pizzas = []
+    for item in items:
+        product = find_product_fuzzy(item.get('name', ''))
+        if product:
+            qty = item.get('quantity', 1)
+            for _ in range(qty):
+                all_pizzas.append(product)
+
+    # Cria pares de promoção
+    for i in range(0, len(all_pizzas), 2):
+        if i + 1 < len(all_pizzas):
+            # Par completo
+            promo_items.append({
+                "product_id": all_pizzas[i].id,
+                "quantity": 1,
+                "promo_price": float(promo_price)
+            })
+            promo_items.append({
+                "product_id": all_pizzas[i + 1].id,
+                "quantity": 1,
+                "promo_price": float(promo_price)
+            })
+        else:
+            # Pizza ímpar - avulsa
+            promo_items.append({
+                "product_id": all_pizzas[i].id,
+                "quantity": 1
+            })
+
+    if promo_items:
+        num_promos = len(all_pizzas) // 2
+        num_avulsas = len(all_pizzas) % 2
+        total = (promo_price * 2 * num_promos) + (all_pizzas[-1].price if num_avulsas else Decimal('0'))
+
+        set_conversation_state(phone, "awaiting_promo_more_items", {
+            "items": promo_items,
+            "promo": True
+        })
+
+        summary = f"Beleza! 🔥 *{num_promos} PROMOÇÃO(ÕES)* anotada(s)!\n\n"
+        for i, pizza in enumerate(all_pizzas):
+            pair_num = (i // 2) + 1
+            if i % 2 == 0 and i + 1 < len(all_pizzas):
+                summary += f"*Promoção {pair_num}:* {pizza.name} + {all_pizzas[i + 1].name}\n"
+            elif i == len(all_pizzas) - 1 and num_avulsas:
+                summary += f"*Avulsa:* {pizza.name} - R$ {pizza.price:.2f}\n"
+
+        summary += f"\n💰 *Total: R$ {total:.2f}*\n\n"
+        summary += "Quer adicionar mais pizza?\n"
+        summary += "1️⃣ Mais promoção (2 por R$55)\n"
+        summary += "2️⃣ Pizza avulsa\n"
+        summary += "3️⃣ Não, só isso"
+
+        send_whatsapp_message(phone, summary)
+        return JsonResponse({"status": "ok", "action": "promo_items_added"})
+
+    # Fallback
+    return process_standard_message(phone, items[0].get('name', ''), 'chat')
+
+
+def handle_size_confirmation(phone: str, message: str) -> str:
+    """Trata confirmação quando cliente pediu tamanho que não existe."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    pending_items = state["data"].get("pending_items", [])
+    order_entities = state["data"].get("order_entities", {})
+
+    # Sim, pode ser G
+    if message_lower in ['1', 'sim', 's', 'pode', 'ok', 'beleza', 'bora', 'g', 'grande']:
+        # Remove size_requested dos items e processa normalmente
+        for item in pending_items:
+            if 'size_requested' in item:
+                del item['size_requested']
+
+        # Processa os itens normalmente (essas funções já enviam mensagem)
+        state = get_conversation_state(phone)
+        current_items = state.get("data", {}).get("items", [])
+
+        for item in pending_items:
+            product = find_product_fuzzy(item.get('name', ''))
+            if product:
+                new_item = {
+                    "type": "single",
+                    "product_id": product.id,
+                    "quantity": item.get('quantity', 1),
+                    "price": float(product.price)
+                }
+                # Processa modifiers
+                modifiers = item.get('modifiers', [])
+                obs_parts = []
+                for mod in modifiers:
+                    ingredient = mod.get('ingredient', '').strip()
+                    if ingredient:
+                        if mod.get('type') == 'remove':
+                            obs_parts.append(f"sem {ingredient}")
+                        elif mod.get('type') == 'add':
+                            obs_parts.append(f"com {ingredient}")
+                if obs_parts:
+                    new_item['observation'] = ', '.join(obs_parts)
+                current_items.append(new_item)
+
+        if current_items:
+            # Verifica se é promoção
+            if order_entities.get('is_promo'):
+                set_conversation_state(phone, "awaiting_promo_more_items", {
+                    "items": current_items,
+                    "promo": True
+                })
+                summary = "Beleza! Pizza tamanho G anotada! 🍕\n\n"
+                for item in current_items:
+                    try:
+                        product = Product.objects.get(id=item["product_id"])
+                        summary += f"• {item.get('quantity', 1)}x *{product.name}*\n"
+                    except:
+                        pass
+                summary += "\nQuer adicionar mais pizza?\n"
+                summary += "1️⃣ Mais promoção (2 por R$55)\n"
+                summary += "2️⃣ Pizza avulsa\n"
+                summary += "3️⃣ Não, só isso"
+                return summary
+            else:
+                set_conversation_state(phone, "awaiting_more_items", {
+                    "items": current_items,
+                    "order_type": "DELIVERY"
+                })
+                summary = "Beleza! Pizza tamanho G anotada! 🍕\n\n"
+                for item in current_items:
+                    try:
+                        product = Product.objects.get(id=item["product_id"])
+                        summary += f"• {item.get('quantity', 1)}x *{product.name}* - R$ {product.price:.2f}\n"
+                    except:
+                        pass
+                summary += "\nQuer mais alguma pizza?\n"
+                summary += "1️⃣ Quero mais\n"
+                summary += "2️⃣ Só isso"
+                return summary
+
+        return "Não consegui identificar a pizza. Pode repetir o sabor?"
+
+    # Não, vou ver o cardápio
+    if message_lower in ['2', 'nao', 'não', 'n', 'cardapio', 'cardápio', 'ver', 'menu']:
+        return handle_menu_request(phone)
+
+    return "Não entendi 😅 Digite 1 pra continuar com pizza G ou 2 pra ver o cardápio."
 
 
 def process_llm_address(phone: str, address: dict, address_resolution: dict) -> JsonResponse:
@@ -3950,6 +4189,9 @@ def bot_webhook(request):
 
     elif current_state == "awaiting_promo_second_after_half":
         response = handle_promo_second_after_half(phone, body)
+
+    elif current_state == "awaiting_size_confirmation":
+        response = handle_size_confirmation(phone, body)
 
     else:
         response = handle_welcome(phone, body, msg_type)
