@@ -123,6 +123,149 @@ def is_message_duplicate(message_id: str) -> bool:
     return not was_added
 
 
+# ============================================
+# DETECÇÃO DE CONVERSAS HUMANIZADAS
+# ============================================
+
+def is_greeting(text: str) -> bool:
+    """Detecta saudações no meio do fluxo."""
+    text_lower = text.lower().strip()
+    greetings = [
+        'oi', 'olá', 'ola', 'oie', 'oii', 'oiii',
+        'bom dia', 'boa tarde', 'boa noite',
+        'eai', 'eae', 'e ai', 'e aí',
+        'opa', 'fala', 'salve',
+        'tudo bem', 'tudo bom', 'como vai', 'como você está',
+        'beleza', 'blz', 'td bem'
+    ]
+    return any(text_lower == g or text_lower.startswith(g + ' ') or text_lower.startswith(g + ',') for g in greetings)
+
+
+def is_question(text: str) -> tuple:
+    """
+    Detecta perguntas comuns e retorna (is_question, question_type, response).
+    question_type: 'price', 'time', 'have', 'general', None
+    """
+    text_lower = text.lower().strip()
+
+    # Perguntas sobre preço
+    price_patterns = [
+        'quanto custa', 'quanto é', 'qual o preço', 'qual é o preço',
+        'qual o valor', 'quanto fica', 'quanto sai', 'preço da', 'valor da'
+    ]
+    if any(p in text_lower for p in price_patterns):
+        return True, 'price', "Os preços variam de R$ 35 a R$ 45 por pizza. Quer ver o cardápio completo? Digite *cardápio*"
+
+    # Perguntas sobre tempo/entrega
+    time_patterns = [
+        'quanto tempo', 'demora quanto', 'prazo de entrega', 'tempo de entrega',
+        'quanto demora', 'chega em quanto', 'entrega em quanto'
+    ]
+    if any(p in text_lower for p in time_patterns):
+        return True, 'time', "O tempo de entrega é de 50 a 70 minutos, dependendo do bairro. Vamos continuar seu pedido?"
+
+    # Perguntas sobre disponibilidade
+    have_patterns = [
+        'vocês tem', 'vocês têm', 'vcs tem', 'tem pizza de', 'tem sabor',
+        'ainda tem', 'disponível', 'acabou'
+    ]
+    if any(p in text_lower for p in have_patterns):
+        return True, 'have', "Temos várias opções! Digite *cardápio* para ver todos os sabores disponíveis."
+
+    # Perguntas sobre funcionamento
+    open_patterns = [
+        'tá aberto', 'está aberto', 'funciona', 'abre que horas', 'fecha que horas',
+        'horário de funcionamento', 'vocês abrem', 'vocês fecham'
+    ]
+    if any(p in text_lower for p in open_patterns):
+        return True, 'hours', "Funcionamos das 19h às 23h. Estamos abertos agora! Posso anotar seu pedido?"
+
+    # Perguntas sobre formas de pagamento
+    payment_patterns = [
+        'aceita pix', 'aceita cartão', 'aceita cartao', 'aceita dinheiro',
+        'formas de pagamento', 'como paga', 'como posso pagar'
+    ]
+    if any(p in text_lower for p in payment_patterns):
+        return True, 'payment', "Aceitamos PIX, cartão (crédito/débito) e dinheiro. Vamos continuar seu pedido?"
+
+    # Perguntas genéricas com "?"
+    if '?' in text_lower and len(text_lower) > 5:
+        return True, 'general', None
+
+    return False, None, None
+
+
+def is_change_of_mind(text: str) -> tuple:
+    """Detecta quando cliente quer mudar de ideia."""
+    text_lower = text.lower().strip()
+
+    # Quer mudar para retirada
+    if any(p in text_lower for p in ['quero retirar', 'vou buscar', 'retirada', 'quero retirada', 'vou retirar']):
+        return True, 'pickup'
+
+    # Quer mudar para entrega
+    if any(p in text_lower for p in ['quero entrega', 'entrega por favor', 'pode entregar']):
+        return True, 'delivery'
+
+    # Quer mudar o pedido
+    if any(p in text_lower for p in ['quero trocar', 'quero mudar', 'na verdade', 'espera', 'peraí', 'mudei de ideia']):
+        return True, 'change'
+
+    # Quer ver o pedido atual
+    if any(p in text_lower for p in ['meu pedido', 'o que eu pedi', 'resumo', 'total até agora']):
+        return True, 'summary'
+
+    return False, None
+
+
+def get_context_help(state: str) -> str:
+    """Retorna ajuda contextual baseada no estado atual."""
+    help_messages = {
+        'awaiting_promo_pizza_1': "Você está escolhendo a *primeira pizza* da promoção.\n\nDigite o número ou nome do sabor, ou 'voltar' para cancelar.",
+        'awaiting_promo_pizza_2': "Você está escolhendo a *segunda pizza* da promoção.\n\nDigite o número ou nome do sabor, ou 'voltar'.",
+        'awaiting_half_half_first': "Você está montando uma pizza *meio a meio*.\n\nDigite o primeiro sabor, ou 'voltar'.",
+        'awaiting_half_half_second': "Você está escolhendo o *segundo sabor* da meio a meio.\n\nDigite o sabor, ou 'voltar'.",
+        'awaiting_more_items': "Você pode adicionar mais pizzas ou finalizar.\n\n1️⃣ Quero mais\n2️⃣ Só isso",
+        'awaiting_address': "Preciso do *endereço completo* para entrega.\n\nEx: Rua das Flores, 123, Centro",
+        'awaiting_payment': "Escolha a *forma de pagamento*:\n\n1️⃣ PIX\n2️⃣ Cartão\n3️⃣ Dinheiro",
+        'awaiting_observation': "Alguma *observação* no pedido?\n\nDigite a observação ou 'não' se não tiver.",
+    }
+    return help_messages.get(state, "Digite 'cardápio' para ver opções ou 'cancelar' para recomeçar.")
+
+
+def handle_humanized_input(phone: str, text: str, current_state: str) -> str:
+    """
+    Trata inputs humanizados (perguntas, saudações, mudança de ideia).
+    Retorna uma resposta se detectou algo, ou None para continuar fluxo normal.
+    """
+    # Detecta saudação no meio do fluxo
+    if is_greeting(text) and current_state not in ['welcome', 'greeting']:
+        help_text = get_context_help(current_state)
+        return f"Oi! 👋 Estamos no meio do seu pedido.\n\n{help_text}"
+
+    # Detecta perguntas
+    is_q, q_type, response = is_question(text)
+    if is_q and response:
+        return response
+    if is_q and q_type == 'general':
+        help_text = get_context_help(current_state)
+        return f"Não entendi sua pergunta 😅\n\n{help_text}\n\nOu digite 'ajuda' para mais opções."
+
+    # Detecta mudança de ideia
+    changed, change_type = is_change_of_mind(text)
+    if changed:
+        if change_type == 'summary':
+            state = get_conversation_state(phone)
+            items = state.get('data', {}).get('items', [])
+            if items:
+                return format_order_summary(items, state.get('data', {}).get('order_type', 'DELIVERY'))
+            return "Você ainda não adicionou nenhum item ao pedido."
+        if change_type == 'change':
+            return "Sem problemas! Digite 'voltar' para voltar ao passo anterior, ou 'cancelar' para recomeçar."
+
+    return None
+
+
 def get_conversation_state(phone: str) -> dict:
     """Recupera estado da conversa do Redis."""
     key = f"conversation:{phone}"
@@ -254,6 +397,66 @@ def get_or_create_customer(phone: str, name: str = None) -> Customer:
         customer.name = name
         customer.save()
     return customer
+
+
+def extract_observation(text: str) -> tuple:
+    """
+    Extrai observações de remoção/adição do texto do pedido.
+    Retorna (texto_limpo, observacao).
+    Ex: "calabresa sem cebola" -> ("calabresa", "sem cebola")
+    """
+    text_lower = text.lower().strip()
+    observations = []
+
+    # Padrões de remoção: "sem X", "tirar X", "não quero X", "retira X"
+    remove_patterns = [
+        r'sem\s+([a-záéíóúàâêôãõç\s]+?)(?:\s*,|\s+e\s+|\s*$)',
+        r'tirar?\s+(?:a\s+|o\s+)?([a-záéíóúàâêôãõç\s]+?)(?:\s*,|\s+e\s+|\s*$)',
+        r'não\s+quero\s+([a-záéíóúàâêôãõç\s]+?)(?:\s*,|\s+e\s+|\s*$)',
+        r'retira(?:r)?\s+(?:a\s+|o\s+)?([a-záéíóúàâêôãõç\s]+?)(?:\s*,|\s+e\s+|\s*$)',
+        r'por\s+favor\s+sem\s+([a-záéíóúàâêôãõç\s]+?)(?:\s*,|\s+e\s+|\s*$)',
+    ]
+
+    clean_text = text_lower
+
+    for pattern in remove_patterns:
+        matches = re.findall(pattern, clean_text)
+        for match in matches:
+            ingredient = match.strip()
+            if ingredient and len(ingredient) >= 3:
+                observations.append(f"sem {ingredient}")
+                # Remove do texto original
+                clean_text = re.sub(pattern, ' ', clean_text)
+
+    # Padrões de adição: "com extra X", "adicionar X"
+    add_patterns = [
+        r'(?:com\s+)?extra\s+([a-záéíóúàâêôãõç\s]+?)(?:\s*,|\s+e\s+|\s*$)',
+        r'adicionar?\s+([a-záéíóúàâêôãõç\s]+?)(?:\s*,|\s+e\s+|\s*$)',
+    ]
+
+    for pattern in add_patterns:
+        matches = re.findall(pattern, clean_text)
+        for match in matches:
+            ingredient = match.strip()
+            if ingredient and len(ingredient) >= 3:
+                observations.append(f"com extra {ingredient}")
+                clean_text = re.sub(pattern, ' ', clean_text)
+
+    # Limpa o texto
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+
+    observation = ', '.join(observations) if observations else None
+    return clean_text, observation
+
+
+def find_product_with_observation(text: str) -> tuple:
+    """
+    Encontra produto e extrai observação.
+    Retorna (Product, observation_string).
+    """
+    clean_text, observation = extract_observation(text)
+    product = find_product_fuzzy(clean_text)
+    return product, observation
 
 
 def find_product_fuzzy(text: str) -> Product:
@@ -529,6 +732,31 @@ def parse_two_pizza_names(text: str) -> tuple:
     """Detecta quando usuário digita dois nomes de pizza. Ex: '4 queijos e calabresa', 'portuguesa e frango'"""
     text_lower = text.lower().strip()
 
+    # Remove prefixos comuns
+    text_lower = re.sub(r'^(quero|uma|pizza|a)\s+', '', text_lower)
+    text_lower = re.sub(r'\s+(quero|uma|pizza)\s+', ' ', text_lower)
+
+    # Detecta padrão "X metade Y e Z metade W" (duas pizzas meio a meio)
+    # Ex: "baiana metade 4 queijos e portuguesa metade palmito"
+    match_double_half = re.search(
+        r'(\w+(?:\s+\w+)?)\s+(?:metade|meia|meio)\s+(\w+(?:\s+\w+)?)\s+e\s+(?:uma\s+)?(\w+(?:\s+\w+)?)\s+(?:metade|meia|meio)\s+(\w+(?:\s+\w+)?)',
+        text_lower
+    )
+    if match_double_half:
+        # Retorna apenas as duas primeiras pizzas (para primeira seleção da promo)
+        pizza1 = find_product_fuzzy(match_double_half.group(1))
+        pizza2 = find_product_fuzzy(match_double_half.group(2))
+        if pizza1 and pizza2:
+            return pizza1, pizza2
+
+    # Detecta padrão "X metade Y" (uma pizza meio a meio)
+    match_half = re.search(r'(\w+(?:\s+\w+)?)\s+(?:metade|meia|meio)\s+(\w+(?:\s+\w+)?)', text_lower)
+    if match_half:
+        pizza1 = find_product_fuzzy(match_half.group(1))
+        pizza2 = find_product_fuzzy(match_half.group(2))
+        if pizza1 and pizza2:
+            return pizza1, pizza2
+
     # Separadores possíveis: " e ", " com ", " + "
     separators = [' e ', ' com ', ' + ', ', ']
 
@@ -538,6 +766,10 @@ def parse_two_pizza_names(text: str) -> tuple:
             if len(parts) == 2:
                 part1 = parts[0].strip()
                 part2 = parts[1].strip()
+
+                # Remove "metade", "meia", etc que sobrou
+                part1 = re.sub(r'\s*(metade|meia|meio)\s*$', '', part1)
+                part2 = re.sub(r'^\s*(metade|meia|meio)\s*', '', part2)
 
                 # Tenta encontrar cada parte como pizza
                 if part1 and part2:
@@ -734,16 +966,33 @@ def handle_welcome(phone: str, message: str, msg_type: str) -> str:
         set_conversation_state(phone, "awaiting_pickup_items", {"order_type": "PICKUP"})
         return "Beleza, vai retirar aqui no local! 👍\n\nQual sabor você quer?"
 
-    # Tenta encontrar um produto na mensagem
-    product = find_product_fuzzy(message)
+    # Tenta encontrar um produto na mensagem (com possível observação)
+    product, observation = find_product_with_observation(message)
     if product:
+        current_item = {
+            "type": "single",
+            "product_id": product.id,
+            "price": float(product.price)
+        }
+
+        # Se já extraiu observação, inclui e pula etapa
+        if observation:
+            current_item["observation"] = observation
+            set_conversation_state(phone, "awaiting_more_items", {
+                "items": [current_item],
+                "order_type": "DELIVERY"
+            })
+            obs_text = f"\n📝 _{observation}_"
+            return (
+                f"Boa escolha! 😋 *{product.name}* - R$ {product.price:.2f}{obs_text}\n\n"
+                f"Mais alguma pizza?\n"
+                f"1️⃣ Quero mais\n"
+                f"2️⃣ Só isso"
+            )
+
         set_conversation_state(phone, "awaiting_observation", {
             "order_type": "DELIVERY",
-            "current_item": {
-                "type": "single",
-                "product_id": product.id,
-                "price": float(product.price)
-            },
+            "current_item": current_item,
             "items": []
         })
         return (
@@ -790,23 +1039,50 @@ def handle_half_half_order(phone: str, message: str) -> str:
     sabor1_text, sabor2_text = parse_half_half(message)
 
     if sabor1_text and sabor2_text:
-        pizza1 = find_product_fuzzy(sabor1_text)
-        pizza2 = find_product_fuzzy(sabor2_text)
+        pizza1, obs1 = find_product_with_observation(sabor1_text)
+        pizza2, obs2 = find_product_with_observation(sabor2_text)
 
         if pizza1 and pizza2:
             # Preço da meio a meio: maior preço entre as duas
             preco = max(pizza1.price, pizza2.price)
 
+            # Combina observações das duas metades
+            combined_obs = []
+            if obs1:
+                combined_obs.append(f"½ {pizza1.name}: {obs1}")
+            if obs2:
+                combined_obs.append(f"½ {pizza2.name}: {obs2}")
+            final_observation = "; ".join(combined_obs) if combined_obs else None
+
+            current_item = {
+                "type": "half_half",
+                "pizza1_id": pizza1.id,
+                "pizza2_id": pizza2.id,
+                "pizza1_name": pizza1.name,
+                "pizza2_name": pizza2.name,
+                "price": float(preco)
+            }
+
+            # Se já tem observação, pula a etapa
+            if final_observation:
+                current_item["observation"] = final_observation
+                set_conversation_state(phone, "awaiting_more_items", {
+                    "items": [current_item],
+                    "order_type": "DELIVERY"
+                })
+                return (
+                    f"Boa! 🍕 *Meio a Meio:*\n"
+                    f"½ {pizza1.name} + ½ {pizza2.name}\n"
+                    f"💰 R$ {preco:.2f}\n"
+                    f"📝 _{final_observation}_\n\n"
+                    f"Mais alguma pizza?\n"
+                    f"1️⃣ Quero mais\n"
+                    f"2️⃣ Só isso"
+                )
+
             set_conversation_state(phone, "awaiting_observation", {
                 "order_type": "DELIVERY",
-                "current_item": {
-                    "type": "half_half",
-                    "pizza1_id": pizza1.id,
-                    "pizza2_id": pizza2.id,
-                    "pizza1_name": pizza1.name,
-                    "pizza2_name": pizza2.name,
-                    "price": float(preco)
-                },
+                "current_item": current_item,
                 "items": []
             })
 
@@ -821,14 +1097,16 @@ def handle_half_half_order(phone: str, message: str) -> str:
             # Encontrou só a primeira, pede a segunda
             set_conversation_state(phone, "awaiting_half_half_second", {
                 "pizza1_id": pizza1.id,
-                "pizza1_name": pizza1.name
+                "pizza1_name": pizza1.name,
+                "pizza1_obs": obs1
             })
             return f"Beleza! Meia *{pizza1.name}*. E a outra metade, qual sabor?"
         elif pizza2:
             # Encontrou só a segunda, pede a primeira
             set_conversation_state(phone, "awaiting_half_half_first", {
                 "pizza2_id": pizza2.id,
-                "pizza2_name": pizza2.name
+                "pizza2_name": pizza2.name,
+                "pizza2_obs": obs2
             })
             return f"Beleza! Meia *{pizza2.name}*. E a outra metade, qual sabor?"
 
@@ -845,13 +1123,19 @@ def handle_half_half_order(phone: str, message: str) -> str:
 
 def handle_half_half_first(phone: str, message: str) -> str:
     """Trata seleção do primeiro sabor da meio a meio."""
+    # Verifica inputs humanizados
+    humanized_response = handle_humanized_input(phone, message, "awaiting_half_half_first")
+    if humanized_response:
+        return humanized_response
+
     state = get_conversation_state(phone)
     pizza2_id = state["data"].get("pizza2_id")
     pizza2_name = state["data"].get("pizza2_name")
+    pizza2_obs = state["data"].get("pizza2_obs")
 
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if not product:
-        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número?\n\n_'voltar' | 'sair'_"
+        return "Hmm, não achei esse sabor 🤔\n\nDigite o *número* ou *nome* do sabor.\nEx: '1' ou 'calabresa'\n\n_'voltar' | 'sair'_"
 
     if pizza2_id:
         # Já tem o segundo sabor, finaliza
@@ -859,16 +1143,43 @@ def handle_half_half_first(phone: str, message: str) -> str:
             pizza2 = Product.objects.get(id=pizza2_id)
             preco = max(product.price, pizza2.price)
 
+            # Combina observações das duas metades
+            combined_obs = []
+            if observation:
+                combined_obs.append(f"½ {product.name}: {observation}")
+            if pizza2_obs:
+                combined_obs.append(f"½ {pizza2.name}: {pizza2_obs}")
+            final_observation = "; ".join(combined_obs) if combined_obs else None
+
+            current_item = {
+                "type": "half_half",
+                "pizza1_id": product.id,
+                "pizza2_id": pizza2.id,
+                "pizza1_name": product.name,
+                "pizza2_name": pizza2.name,
+                "price": float(preco)
+            }
+
+            # Se já tem observação, pula a etapa
+            if final_observation:
+                current_item["observation"] = final_observation
+                set_conversation_state(phone, "awaiting_more_items", {
+                    "items": [current_item],
+                    "order_type": "DELIVERY"
+                })
+                return (
+                    f"Boa! 🍕 *Meio a Meio:*\n"
+                    f"½ {product.name} + ½ {pizza2.name}\n"
+                    f"💰 R$ {preco:.2f}\n"
+                    f"📝 _{final_observation}_\n\n"
+                    f"Mais alguma pizza?\n"
+                    f"1️⃣ Quero mais\n"
+                    f"2️⃣ Só isso"
+                )
+
             set_conversation_state(phone, "awaiting_observation", {
                 "order_type": "DELIVERY",
-                "current_item": {
-                    "type": "half_half",
-                    "pizza1_id": product.id,
-                    "pizza2_id": pizza2.id,
-                    "pizza1_name": product.name,
-                    "pizza2_name": pizza2.name,
-                    "price": float(preco)
-                },
+                "current_item": current_item,
                 "items": []
             })
 
@@ -885,7 +1196,8 @@ def handle_half_half_first(phone: str, message: str) -> str:
     # Pede o segundo sabor
     set_conversation_state(phone, "awaiting_half_half_second", {
         "pizza1_id": product.id,
-        "pizza1_name": product.name
+        "pizza1_name": product.name,
+        "pizza1_obs": observation
     })
 
     pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
@@ -898,28 +1210,61 @@ def handle_half_half_first(phone: str, message: str) -> str:
 
 def handle_half_half_second(phone: str, message: str) -> str:
     """Trata seleção do segundo sabor da meio a meio."""
+    # Verifica inputs humanizados
+    humanized_response = handle_humanized_input(phone, message, "awaiting_half_half_second")
+    if humanized_response:
+        return humanized_response
+
     state = get_conversation_state(phone)
     pizza1_id = state["data"].get("pizza1_id")
     pizza1_name = state["data"].get("pizza1_name")
+    pizza1_obs = state["data"].get("pizza1_obs")
 
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if not product:
-        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número?\n\n_'voltar' | 'sair'_"
+        return "Hmm, não achei esse sabor 🤔\n\nDigite o *número* ou *nome* do segundo sabor.\n\n_'voltar' | 'sair'_"
 
     try:
         pizza1 = Product.objects.get(id=pizza1_id)
         preco = max(pizza1.price, product.price)
 
+        # Combina observações das duas metades
+        combined_obs = []
+        if pizza1_obs:
+            combined_obs.append(f"½ {pizza1.name}: {pizza1_obs}")
+        if observation:
+            combined_obs.append(f"½ {product.name}: {observation}")
+        final_observation = "; ".join(combined_obs) if combined_obs else None
+
+        current_item = {
+            "type": "half_half",
+            "pizza1_id": pizza1.id,
+            "pizza2_id": product.id,
+            "pizza1_name": pizza1.name,
+            "pizza2_name": product.name,
+            "price": float(preco)
+        }
+
+        # Se já tem observação, pula a etapa
+        if final_observation:
+            current_item["observation"] = final_observation
+            set_conversation_state(phone, "awaiting_more_items", {
+                "items": [current_item],
+                "order_type": "DELIVERY"
+            })
+            return (
+                f"Boa! 🍕 *Meio a Meio:*\n"
+                f"½ {pizza1.name} + ½ {product.name}\n"
+                f"💰 R$ {preco:.2f}\n"
+                f"📝 _{final_observation}_\n\n"
+                f"Mais alguma pizza?\n"
+                f"1️⃣ Quero mais\n"
+                f"2️⃣ Só isso"
+            )
+
         set_conversation_state(phone, "awaiting_observation", {
             "order_type": "DELIVERY",
-            "current_item": {
-                "type": "half_half",
-                "pizza1_id": pizza1.id,
-                "pizza2_id": product.id,
-                "pizza1_name": pizza1.name,
-                "pizza2_name": product.name,
-                "price": float(preco)
-            },
+            "current_item": current_item,
             "items": []
         })
 
@@ -938,13 +1283,23 @@ def handle_half_half_second(phone: str, message: str) -> str:
 def handle_observation(phone: str, message: str) -> str:
     """Trata observação do item (tirar ingredientes, etc)."""
     message_lower = message.lower().strip()
+
+    # Verifica se é pergunta (não deve ser tratada como observação)
+    is_q, q_type, response = is_question(message)
+    if is_q and response:
+        return response + "\n\nDigite a observação ou 'não' se não tiver."
+
+    # Saudações no meio = sem observação
+    if is_greeting(message):
+        message_lower = 'nao'
+
     state = get_conversation_state(phone)
     current_item = state["data"].get("current_item", {})
     items = state["data"].get("items", [])
     order_type = state["data"].get("order_type", "DELIVERY")
 
     # Salva observação no item atual
-    if message_lower not in ['nao', 'não', 'n', 'nenhuma', 'nada']:
+    if message_lower not in ['nao', 'não', 'n', 'nenhuma', 'nada', 'ok', 'nao tem', 'não tem']:
         current_item["observation"] = message
 
     items.append(current_item)
@@ -991,6 +1346,11 @@ def handle_promo_order(phone: str) -> str:
 
 def handle_promo_pizza_1(phone: str, message: str) -> str:
     """Trata seleção da primeira pizza da promoção."""
+    # Verifica inputs humanizados (perguntas, saudações)
+    humanized_response = handle_humanized_input(phone, message, "awaiting_promo_pizza_1")
+    if humanized_response:
+        return humanized_response
+
     # Recupera itens existentes (para quando está adicionando mais promoções)
     state = get_conversation_state(phone)
     existing_items = state["data"].get("items", [])
@@ -1042,13 +1402,14 @@ def handle_promo_pizza_1(phone: str, message: str) -> str:
             f"_'voltar' | 'cancelar'_"
         )
 
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if not product:
         return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode digitar '4 queijos e calabresa' para escolher dois sabores!_\n\n_'voltar' | 'sair'_"
 
     pizzas = Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name')
 
-    menu = f"Boa! ✅ Primeira pizza: *{product.name}*\n\n"
+    obs_display = f" _{observation}_" if observation else ""
+    menu = f"Boa! ✅ Primeira pizza: *{product.name}*{obs_display}\n\n"
     menu += "Agora escolhe o *segundo* sabor:\n\n"
     for i, pizza in enumerate(pizzas, 1):
         menu += f"{i}. {pizza.name}\n"
@@ -1059,6 +1420,7 @@ def handle_promo_pizza_1(phone: str, message: str) -> str:
     set_conversation_state(phone, "awaiting_promo_pizza_2", {
         "promo": True,
         "promo_pizza_1": product.id,
+        "promo_pizza_1_obs": observation,
         "existing_items": existing_items,
         "order_type": order_type,
     })
@@ -1145,12 +1507,15 @@ def handle_promo_second_after_half(phone: str, message: str) -> str:
     items = state["data"].get("items", [])
     order_type = state["data"].get("order_type", "DELIVERY")
 
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if not product:
         return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_'voltar' | 'sair'_"
 
     promo_price = Decimal('27.50')
-    items.append({"product_id": product.id, "quantity": 1, "promo_price": float(promo_price)})
+    new_item = {"product_id": product.id, "quantity": 1, "promo_price": float(promo_price)}
+    if observation:
+        new_item["observation"] = observation
+    items.append(new_item)
 
     # Monta nomes para exibição - busca o último item half_half (da promoção atual)
     half_half = None
@@ -1169,10 +1534,11 @@ def handle_promo_second_after_half(phone: str, message: str) -> str:
         "pizza_2_name": product.name,
     })
 
+    obs_display = f" _{observation}_" if observation else ""
     return (
-        f"Perfeito! ✅ Segunda pizza: *{product.name}*\n\n"
+        f"Perfeito! ✅ Segunda pizza: *{product.name}*{obs_display}\n\n"
         f"🍕 *½ {pizza1_name} + ½ {pizza2_name}* (meio a meio)\n"
-        f"🍕 *{product.name}*\n"
+        f"🍕 *{product.name}*{obs_display}\n"
         f"💰 *Total da promoção: R$ 55,00*\n\n"
         f"Quer adicionar mais pizza?\n"
         f"1️⃣ Mais promoção (2 por R$55)\n"
@@ -1184,6 +1550,11 @@ def handle_promo_second_after_half(phone: str, message: str) -> str:
 
 def handle_promo_pizza_2(phone: str, message: str) -> str:
     """Trata seleção da segunda pizza da promoção."""
+    # Verifica inputs humanizados
+    humanized_response = handle_humanized_input(phone, message, "awaiting_promo_pizza_2")
+    if humanized_response:
+        return humanized_response
+
     state = get_conversation_state(phone)
     pizza_1_id = state["data"].get("promo_pizza_1")
     existing_items = state["data"].get("existing_items", [])
@@ -1279,17 +1650,26 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
             f"_'voltar' | 'sair'_"
         )
 
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if not product:
-        logger.warning(f"DEBUG: find_product_fuzzy retornou None para '{message}'")
+        logger.warning(f"DEBUG: find_product_with_observation retornou None para '{message}'")
         return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode digitar '4 queijos e calabresa' para meio a meio!_\n\n_'voltar' | 'sair'_"
+
+    # Recupera observação da pizza 1 (se houver)
+    pizza_1_obs = state["data"].get("promo_pizza_1_obs")
 
     # Define os itens com preço especial da promoção (R$ 27,50 cada = R$ 55 total)
     promo_price = Decimal('27.50')
-    new_items = existing_items + [
-        {"product_id": pizza_1.id, "quantity": 1, "promo_price": float(promo_price)},
-        {"product_id": product.id, "quantity": 1, "promo_price": float(promo_price)}
-    ]
+    item_1 = {"product_id": pizza_1.id, "quantity": 1, "promo_price": float(promo_price)}
+    item_2 = {"product_id": product.id, "quantity": 1, "promo_price": float(promo_price)}
+
+    # Adiciona observações se existirem
+    if pizza_1_obs:
+        item_1["observation"] = pizza_1_obs
+    if observation:
+        item_2["observation"] = observation
+
+    new_items = existing_items + [item_1, item_2]
 
     set_conversation_state(phone, "awaiting_promo_more_items", {
         "items": new_items,
@@ -1298,9 +1678,13 @@ def handle_promo_pizza_2(phone: str, message: str) -> str:
         "pizza_2_name": product.name,
     })
 
+    # Exibe observações se existirem
+    obs_1_display = f" _{pizza_1_obs}_" if pizza_1_obs else ""
+    obs_2_display = f" _{observation}_" if observation else ""
+
     return (
-        f"Perfeito! ✅ Segunda pizza: *{product.name}*\n\n"
-        f"🍕 *{pizza_1.name}* + *{product.name}*\n"
+        f"Perfeito! ✅ Segunda pizza: *{product.name}*{obs_2_display}\n\n"
+        f"🍕 *{pizza_1.name}*{obs_1_display} + *{product.name}*{obs_2_display}\n"
         f"💰 *Total da promoção: R$ 55,00*\n\n"
         f"Quer adicionar mais pizza?\n"
         f"1️⃣ Mais promoção (2 por R$55)\n"
@@ -1447,11 +1831,20 @@ def handle_promo_another_item(phone: str, message: str) -> str:
     if is_half_half_request(message):
         sabor1_text, sabor2_text = parse_half_half(message)
         if sabor1_text and sabor2_text:
-            pizza1 = find_product_fuzzy(sabor1_text)
-            pizza2 = find_product_fuzzy(sabor2_text)
+            pizza1, obs1 = find_product_with_observation(sabor1_text)
+            pizza2, obs2 = find_product_with_observation(sabor2_text)
             if pizza1 and pizza2:
                 preco = max(pizza1.price, pizza2.price)
-                items.append({
+
+                # Combina observações
+                combined_obs = []
+                if obs1:
+                    combined_obs.append(f"½ {pizza1.name}: {obs1}")
+                if obs2:
+                    combined_obs.append(f"½ {pizza2.name}: {obs2}")
+                final_obs = "; ".join(combined_obs) if combined_obs else None
+
+                new_item = {
                     "type": "half_half",
                     "pizza1_id": pizza1.id,
                     "pizza2_id": pizza2.id,
@@ -1459,34 +1852,44 @@ def handle_promo_another_item(phone: str, message: str) -> str:
                     "pizza2_name": pizza2.name,
                     "price": float(preco),
                     "quantity": 1
-                })
+                }
+                if final_obs:
+                    new_item["observation"] = final_obs
+                items.append(new_item)
+
                 set_conversation_state(phone, "awaiting_promo_more_items", {
                     "items": items,
                     "promo": True,
                     "pizza_1_name": pizza_1_name,
                     "pizza_2_name": pizza_2_name,
                 })
+                obs_display = f"\n📝 _{final_obs}_" if final_obs else ""
                 return (
-                    f"Anotado! ✅ *½ {pizza1.name} + ½ {pizza2.name}* - R$ {preco:.2f}\n\n"
+                    f"Anotado! ✅ *½ {pizza1.name} + ½ {pizza2.name}* - R$ {preco:.2f}{obs_display}\n\n"
                     f"Mais alguma pizza?\n"
                     f"1️⃣ Quero mais\n"
                     f"2️⃣ Só isso\n\n"
                     f"_'voltar' | 'sair'_"
                 )
 
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if not product:
         return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_'voltar' | 'sair'_"
 
-    items.append({"product_id": product.id, "quantity": 1})
+    new_item = {"product_id": product.id, "quantity": 1}
+    if observation:
+        new_item["observation"] = observation
+    items.append(new_item)
+
     set_conversation_state(phone, "awaiting_promo_more_items", {
         "items": items,
         "promo": True,
         "pizza_1_name": pizza_1_name,
         "pizza_2_name": pizza_2_name,
     })
+    obs_display = f"\n📝 _{observation}_" if observation else ""
     return (
-        f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}\n\n"
+        f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}{obs_display}\n\n"
         f"Mais alguma pizza?\n"
         f"1️⃣ Quero mais\n"
         f"2️⃣ Só isso\n\n"
@@ -1496,6 +1899,11 @@ def handle_promo_another_item(phone: str, message: str) -> str:
 
 def handle_awaiting_more_items(phone: str, message: str) -> str:
     """Trata pergunta se quer mais itens."""
+    # Verifica inputs humanizados
+    humanized_response = handle_humanized_input(phone, message, "awaiting_more_items")
+    if humanized_response:
+        return humanized_response
+
     message_lower = message.lower().strip()
     state = get_conversation_state(phone)
     items = state["data"].get("items", [])
@@ -1519,12 +1927,16 @@ def handle_awaiting_more_items(phone: str, message: str) -> str:
         return get_drinks_menu()
 
     # Tenta identificar se digitou o nome de uma pizza diretamente
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if product:
-        items.append({"product_id": product.id, "quantity": 1})
+        new_item = {"product_id": product.id, "quantity": 1}
+        if observation:
+            new_item["observation"] = observation
+        items.append(new_item)
         set_conversation_state(phone, "awaiting_more_items", {"items": items, "order_type": order_type})
+        obs_display = f"\n📝 _{observation}_" if observation else ""
         return (
-            f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}\n\n"
+            f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}{obs_display}\n\n"
             f"Mais alguma pizza?\n"
             f"1️⃣ Quero mais\n"
             f"2️⃣ Só isso"
@@ -1543,20 +1955,49 @@ def handle_awaiting_another_item(phone: str, message: str) -> str:
     if is_half_half_request(message):
         sabor1_text, sabor2_text = parse_half_half(message)
         if sabor1_text and sabor2_text:
-            pizza1 = find_product_fuzzy(sabor1_text)
-            pizza2 = find_product_fuzzy(sabor2_text)
+            pizza1, obs1 = find_product_with_observation(sabor1_text)
+            pizza2, obs2 = find_product_with_observation(sabor2_text)
             if pizza1 and pizza2:
                 preco = max(pizza1.price, pizza2.price)
+
+                # Combina observações
+                combined_obs = []
+                if obs1:
+                    combined_obs.append(f"½ {pizza1.name}: {obs1}")
+                if obs2:
+                    combined_obs.append(f"½ {pizza2.name}: {obs2}")
+                final_obs = "; ".join(combined_obs) if combined_obs else None
+
+                current_item = {
+                    "type": "half_half",
+                    "pizza1_id": pizza1.id,
+                    "pizza2_id": pizza2.id,
+                    "pizza1_name": pizza1.name,
+                    "pizza2_name": pizza2.name,
+                    "price": float(preco)
+                }
+
+                # Se já tem observação, pula a etapa
+                if final_obs:
+                    current_item["observation"] = final_obs
+                    items.append(current_item)
+                    set_conversation_state(phone, "awaiting_more_items", {
+                        "items": items,
+                        "order_type": order_type
+                    })
+                    return (
+                        f"Boa! 🍕 *Meio a Meio:*\n"
+                        f"½ {pizza1.name} + ½ {pizza2.name}\n"
+                        f"💰 R$ {preco:.2f}\n"
+                        f"📝 _{final_obs}_\n\n"
+                        f"Mais alguma pizza?\n"
+                        f"1️⃣ Quero mais\n"
+                        f"2️⃣ Só isso"
+                    )
+
                 set_conversation_state(phone, "awaiting_observation", {
                     "order_type": order_type,
-                    "current_item": {
-                        "type": "half_half",
-                        "pizza1_id": pizza1.id,
-                        "pizza2_id": pizza2.id,
-                        "pizza1_name": pizza1.name,
-                        "pizza2_name": pizza2.name,
-                        "price": float(preco)
-                    },
+                    "current_item": current_item,
                     "items": items
                 })
                 return (
@@ -1576,17 +2017,35 @@ def handle_awaiting_another_item(phone: str, message: str) -> str:
         menu += "\n_Digite o número ou nome | 'voltar' | 'sair'_"
         return menu
 
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if not product:
         return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_Dica: pode pedir meio a meio! Ex: 'meio calabresa meio mussarela'_\n\n_'voltar' | 'sair'_"
 
+    current_item = {
+        "type": "single",
+        "product_id": product.id,
+        "price": float(product.price)
+    }
+
+    # Se já extraiu observação, inclui e pula etapa
+    if observation:
+        current_item["observation"] = observation
+        items.append(current_item)
+        set_conversation_state(phone, "awaiting_more_items", {
+            "items": items,
+            "order_type": order_type
+        })
+        obs_text = f"\n📝 _{observation}_"
+        return (
+            f"Boa! ✅ *{product.name}* - R$ {product.price:.2f}{obs_text}\n\n"
+            f"Mais alguma pizza?\n"
+            f"1️⃣ Quero mais\n"
+            f"2️⃣ Só isso"
+        )
+
     set_conversation_state(phone, "awaiting_observation", {
         "order_type": order_type,
-        "current_item": {
-            "type": "single",
-            "product_id": product.id,
-            "price": float(product.price)
-        },
+        "current_item": current_item,
         "items": items
     })
 
@@ -1599,21 +2058,26 @@ def handle_awaiting_another_item(phone: str, message: str) -> str:
 
 def handle_awaiting_items(phone: str, message: str, order_type: str) -> str:
     """Trata selecao de itens para retirada."""
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if not product:
         return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_'voltar' | 'sair'_"
 
     state = get_conversation_state(phone)
     items = state["data"].get("items", [])
-    items.append({"product_id": product.id, "quantity": 1})
+
+    new_item = {"product_id": product.id, "quantity": 1}
+    if observation:
+        new_item["observation"] = observation
+    items.append(new_item)
 
     set_conversation_state(phone, "awaiting_more_items_pickup", {
         "items": items,
         "order_type": order_type
     })
 
+    obs_display = f"\n📝 _{observation}_" if observation else ""
     return (
-        f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}\n\n"
+        f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}{obs_display}\n\n"
         f"Mais alguma pizza?\n"
         f"1️⃣ Quero mais\n"
         f"2️⃣ Só isso"
@@ -1644,12 +2108,16 @@ def handle_awaiting_more_items_pickup(phone: str, message: str) -> str:
         return get_drinks_menu()
 
     # Tenta identificar se digitou o nome de uma pizza diretamente
-    product = find_product_fuzzy(message)
+    product, observation = find_product_with_observation(message)
     if product:
-        items.append({"product_id": product.id, "quantity": 1})
+        new_item = {"product_id": product.id, "quantity": 1}
+        if observation:
+            new_item["observation"] = observation
+        items.append(new_item)
         set_conversation_state(phone, "awaiting_more_items_pickup", {"items": items, "order_type": "PICKUP"})
+        obs_display = f"\n📝 _{observation}_" if observation else ""
         return (
-            f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}\n\n"
+            f"Anotado! ✅ *{product.name}* - R$ {product.price:.2f}{obs_display}\n\n"
             f"Mais alguma pizza?\n"
             f"1️⃣ Quero mais\n"
             f"2️⃣ Só isso"
@@ -1812,6 +2280,11 @@ def handle_confirming_pickup(phone: str, message: str) -> str:
 
 def handle_awaiting_address(phone: str, message: str) -> str:
     """Trata endereco de entrega."""
+    # Verifica inputs humanizados
+    humanized_response = handle_humanized_input(phone, message, "awaiting_address")
+    if humanized_response:
+        return humanized_response
+
     state = get_conversation_state(phone)
     items = state["data"].get("items", [])
     is_promo = state["data"].get("promo", False)
@@ -1868,15 +2341,60 @@ def handle_awaiting_address(phone: str, message: str) -> str:
                 neighborhood = fee_obj.neighborhood
                 break
 
-    # Se ainda não encontrou o bairro, informa que não entrega na região
+    # Se ainda não encontrou o bairro, tenta fuzzy match ou mostra lista
     if not neighborhood or not fee_obj:
-        bairros_disponiveis = [f.neighborhood for f in all_fees]
+        bairros_disponiveis = list(all_fees)
         if bairros_disponiveis:
-            bairros_lista = "\n".join([f"• {b}" for b in bairros_disponiveis])
+            # Tenta encontrar bairro similar (fuzzy match)
+            words = [w for w in message_lower.replace(',', ' ').split() if len(w) >= 3]
+            best_match = None
+            best_score = 0
+
+            for word in words:
+                for fee in bairros_disponiveis:
+                    bairro_lower = fee.neighborhood.lower()
+                    # Calcula similaridade simples
+                    if word in bairro_lower or bairro_lower in word:
+                        score = 80
+                    elif word[:3] == bairro_lower[:3]:  # Começa igual
+                        score = 60
+                    else:
+                        # Conta letras em comum
+                        common = sum(1 for c in word if c in bairro_lower)
+                        score = (common / max(len(word), len(bairro_lower))) * 100
+
+                    if score > best_score and score >= 50:
+                        best_score = score
+                        best_match = fee
+
+            # Se encontrou um match razoável, sugere
+            if best_match and best_score >= 50:
+                set_conversation_state(phone, "awaiting_neighborhood_confirm", {
+                    "items": items,
+                    "address": message,
+                    "suggested_neighborhood": best_match.neighborhood,
+                    "suggested_fee": float(best_match.fee),
+                    "promo": is_promo
+                })
+                return (
+                    f"🤔 Não encontrei o bairro exato...\n\n"
+                    f"Você quis dizer *{best_match.neighborhood}*?\n"
+                    f"(Taxa de entrega: R$ {best_match.fee:.2f})\n\n"
+                    f"1️⃣ Sim, é esse\n"
+                    f"2️⃣ Não, vou digitar o bairro\n\n"
+                    f"_Ou digite 'retirada' para buscar no local_"
+                )
+
+            # Se não encontrou match, mostra lista numerada
+            bairros_lista = "\n".join([f"{i+1}. {f.neighborhood} (R$ {f.fee:.2f})" for i, f in enumerate(bairros_disponiveis)])
+            set_conversation_state(phone, "awaiting_neighborhood_select", {
+                "items": items,
+                "address": message,
+                "promo": is_promo
+            })
             return (
-                f"😕 *Não entregamos nessa região.*\n\n"
-                f"Bairros onde entregamos:\n{bairros_lista}\n\n"
-                f"Por favor, informe o endereço com um dos bairros acima.\n\n"
+                f"😕 Não encontrei o bairro no seu endereço.\n\n"
+                f"*Digite o número* do seu bairro:\n\n{bairros_lista}\n\n"
                 f"_Ou digite 'retirada' para buscar no local_\n"
                 f"_'voltar' | 'sair'_"
             )
@@ -1907,6 +2425,147 @@ def handle_awaiting_address(phone: str, message: str) -> str:
         f"Tudo certo pra *ENTREGA*? 🛵\n"
         f"1️⃣ Confirmar pedido\n"
         f"2️⃣ Cancelar"
+    )
+
+
+def handle_neighborhood_confirm(phone: str, message: str) -> str:
+    """Trata confirmação de bairro sugerido."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    items = state["data"].get("items", [])
+    address = state["data"].get("address", "")
+    suggested = state["data"].get("suggested_neighborhood", "")
+    fee = state["data"].get("suggested_fee", 0)
+    is_promo = state["data"].get("promo", False)
+
+    # Verifica se quer retirada
+    if message_lower in ['retirada', 'retirar', 'buscar']:
+        set_conversation_state(phone, "awaiting_drink_pickup", {
+            "items": items,
+            "order_type": "PICKUP",
+            "promo": is_promo
+        })
+        return f"Beleza, vai retirar no local! 👍\n\n" + get_drinks_menu()
+
+    # Confirma o bairro sugerido
+    if message_lower in ['1', 'sim', 's', 'esse', 'é esse', 'e esse']:
+        set_conversation_state(phone, "confirming_delivery", {
+            "items": items,
+            "address": address,
+            "neighborhood": suggested,
+            "delivery_fee": fee,
+            "promo": is_promo
+        })
+
+        customer = Customer.objects.filter(phone=phone).first()
+        customer_name = customer.name if customer else None
+        summary = format_order_summary(items, Decimal(str(fee)), order_type='DELIVERY', is_promo=is_promo, customer_name=customer_name, customer_phone=phone)
+
+        return (
+            f"Beleza! Olha o resumo do seu pedido:\n\n"
+            f"{summary}\n\n"
+            f"📍 *Endereço:* {address}\n"
+            f"🏘️ *Bairro:* {suggested}\n\n"
+            f"Tudo certo pra *ENTREGA*? 🛵\n"
+            f"1️⃣ Confirmar pedido\n"
+            f"2️⃣ Cancelar"
+        )
+
+    # Quer digitar outro bairro
+    if message_lower in ['2', 'nao', 'não', 'n', 'outro']:
+        all_fees = DeliveryFee.objects.filter(active=True).order_by('neighborhood')
+        bairros_lista = "\n".join([f"{i+1}. {f.neighborhood} (R$ {f.fee:.2f})" for i, f in enumerate(all_fees)])
+        set_conversation_state(phone, "awaiting_neighborhood_select", {
+            "items": items,
+            "address": address,
+            "promo": is_promo
+        })
+        return (
+            f"*Digite o número* do seu bairro:\n\n{bairros_lista}\n\n"
+            f"_Ou digite o nome do bairro_\n"
+            f"_'voltar' | 'sair'_"
+        )
+
+    return "Não entendi 😅\n\n1️⃣ Sim, é esse bairro\n2️⃣ Não, vou escolher outro"
+
+
+def handle_neighborhood_select(phone: str, message: str) -> str:
+    """Trata seleção de bairro da lista."""
+    message_lower = message.lower().strip()
+    state = get_conversation_state(phone)
+    items = state["data"].get("items", [])
+    address = state["data"].get("address", "")
+    is_promo = state["data"].get("promo", False)
+
+    # Verifica se quer retirada
+    if message_lower in ['retirada', 'retirar', 'buscar']:
+        set_conversation_state(phone, "awaiting_drink_pickup", {
+            "items": items,
+            "order_type": "PICKUP",
+            "promo": is_promo
+        })
+        return f"Beleza, vai retirar no local! 👍\n\n" + get_drinks_menu()
+
+    all_fees = list(DeliveryFee.objects.filter(active=True).order_by('neighborhood'))
+
+    # Se digitou número
+    if message_lower.isdigit():
+        idx = int(message_lower)
+        if 1 <= idx <= len(all_fees):
+            fee_obj = all_fees[idx - 1]
+            set_conversation_state(phone, "confirming_delivery", {
+                "items": items,
+                "address": address,
+                "neighborhood": fee_obj.neighborhood,
+                "delivery_fee": float(fee_obj.fee),
+                "promo": is_promo
+            })
+
+            customer = Customer.objects.filter(phone=phone).first()
+            customer_name = customer.name if customer else None
+            summary = format_order_summary(items, fee_obj.fee, order_type='DELIVERY', is_promo=is_promo, customer_name=customer_name, customer_phone=phone)
+
+            return (
+                f"Beleza! Olha o resumo do seu pedido:\n\n"
+                f"{summary}\n\n"
+                f"📍 *Endereço:* {address}\n"
+                f"🏘️ *Bairro:* {fee_obj.neighborhood}\n\n"
+                f"Tudo certo pra *ENTREGA*? 🛵\n"
+                f"1️⃣ Confirmar pedido\n"
+                f"2️⃣ Cancelar"
+            )
+
+    # Se digitou nome do bairro
+    for fee_obj in all_fees:
+        if fee_obj.neighborhood.lower() in message_lower or message_lower in fee_obj.neighborhood.lower():
+            set_conversation_state(phone, "confirming_delivery", {
+                "items": items,
+                "address": address,
+                "neighborhood": fee_obj.neighborhood,
+                "delivery_fee": float(fee_obj.fee),
+                "promo": is_promo
+            })
+
+            customer = Customer.objects.filter(phone=phone).first()
+            customer_name = customer.name if customer else None
+            summary = format_order_summary(items, fee_obj.fee, order_type='DELIVERY', is_promo=is_promo, customer_name=customer_name, customer_phone=phone)
+
+            return (
+                f"Beleza! Olha o resumo do seu pedido:\n\n"
+                f"{summary}\n\n"
+                f"📍 *Endereço:* {address}\n"
+                f"🏘️ *Bairro:* {fee_obj.neighborhood}\n\n"
+                f"Tudo certo pra *ENTREGA*? 🛵\n"
+                f"1️⃣ Confirmar pedido\n"
+                f"2️⃣ Cancelar"
+            )
+
+    # Não encontrou
+    bairros_lista = "\n".join([f"{i+1}. {f.neighborhood} (R$ {f.fee:.2f})" for i, f in enumerate(all_fees)])
+    return (
+        f"Não encontrei esse bairro 😕\n\n"
+        f"*Digite o número* do seu bairro:\n\n{bairros_lista}\n\n"
+        f"_'voltar' | 'sair'_"
     )
 
 
@@ -2404,61 +3063,447 @@ def handle_menu_request(phone: str) -> str:
     return menu
 
 
-def is_valid_phone(phone: str) -> bool:
-    """Verifica se é um número de telefone válido (brasileiro ou internacional)."""
-    if not phone:
+def is_valid_chat_id(chat_id: str) -> bool:
+    """Verifica se é um chat_id válido (telefone ou LID)."""
+    if not chat_id:
         return False
-    digits = ''.join(filter(str.isdigit, phone))
-    # Aceita telefones com 8 a 15 dígitos (cobre maioria dos países)
-    if len(digits) < 8 or len(digits) > 15:
-        return False
-    return True
+
+    # Aceita LIDs
+    if '@lid' in chat_id.lower():
+        return True
+
+    # Aceita formatos completos do WhatsApp
+    if '@c.us' in chat_id or '@s.whatsapp.net' in chat_id:
+        return True
+
+    # Verifica se tem dígitos suficientes
+    digits = ''.join(filter(str.isdigit, chat_id))
+    return len(digits) >= 8
 
 
-def extract_phone_number(payload: dict) -> str:
-    """Extrai o numero de telefone do payload do WAHA."""
-    phone = None
+def extract_chat_id(payload: dict) -> str:
+    """Extrai o chat_id do payload do WAHA. Aceita telefones e LIDs."""
     _data = payload.get('_data', {})
     info = _data.get('Info', {})
 
-    # Lista de campos para tentar extrair o número (em ordem de prioridade)
+    logger.info(f"DEBUG extract_chat_id - payload keys: {list(payload.keys())}")
+
+    # Lista de campos para tentar extrair o chat_id (em ordem de prioridade)
     candidates = [
-        payload.get('participant', ''),  # Em grupos, participant tem o número
-        info.get('SenderAlt', ''),  # Formato: 556992690072:94@s.whatsapp.net
-        info.get('Sender', ''),  # Formato: 556992690072:20@s.whatsapp.net
+        payload.get('chatId', ''),  # Campo principal
         payload.get('from', ''),  # Pode ser número ou LID
-        payload.get('notifyName', ''),  # Às vezes contém info útil
+        info.get('RemoteJid', ''),  # Formato: 5569993639552@s.whatsapp.net ou LID@lid
+        _data.get('RemoteJid', ''),  # Backup
+        payload.get('participant', ''),  # Em grupos
     ]
+
+    logger.info(f"DEBUG extract_chat_id - candidates: {candidates}")
 
     for candidate in candidates:
         if not candidate:
             continue
 
-        # Ignora LIDs
-        if '@lid' in candidate:
-            continue
+        # Se é um LID, aceita diretamente
+        if '@lid' in candidate.lower():
+            logger.info(f"Chat ID (LID) extraido: {candidate}")
+            return candidate
 
-        # Extrai apenas a parte numérica antes de @ ou :
+        # Se já está no formato correto do WhatsApp
+        if '@c.us' in candidate or '@s.whatsapp.net' in candidate:
+            # Extrai a parte antes do @
+            parts = candidate.split('@')
+            chat_part = parts[0].split(':')[0]  # Remove :XX se existir
+            suffix = '@' + parts[1]
+
+            if is_valid_chat_id(chat_part + suffix):
+                result = chat_part + suffix
+                logger.info(f"Chat ID extraido: {result}")
+                return result
+
+        # Tenta extrair número puro
         phone = re.sub(r'[@:].*', '', candidate)
-
-        # Remove não-dígitos
         if not phone.isdigit():
             phone = re.sub(r'\D', '', phone)
 
-        # Valida se é um telefone válido (brasileiro ou internacional)
-        if phone and is_valid_phone(phone):
-            logger.info(f"Telefone extraido de '{candidate}': {phone}")
-            return phone
+        # Valida comprimento (telefones: 8-15, LIDs numéricos: até 20)
+        if len(phone) >= 8 and len(phone) <= 20:
+            # Adiciona sufixo padrão
+            result = f"{phone}@c.us"
+            logger.info(f"Chat ID construido: {result} (de {candidate})")
+            return result
 
-    # Se não encontrou em nenhum campo, loga para debug
-    from_field = payload.get('from', '')
-    logger.warning(f"Nao foi possivel extrair telefone valido. from={from_field}, SenderAlt={info.get('SenderAlt')}, Sender={info.get('Sender')}")
+    logger.warning(f"Nao foi possivel extrair chat_id valido do payload")
     return None
+
+
+# Alias para compatibilidade
+def is_valid_phone(phone: str) -> bool:
+    """Alias para is_valid_chat_id - mantido para compatibilidade."""
+    return is_valid_chat_id(phone)
+
+
+def extract_phone_number(payload: dict) -> str:
+    """Alias para extract_chat_id - mantido para compatibilidade."""
+    return extract_chat_id(payload)
+
+
+def process_n8n_envelope(data: dict) -> JsonResponse:
+    """
+    Processa envelope estruturado do n8n (novo formato híbrido).
+
+    Envelope esperado:
+    {
+        "source": "n8n",
+        "normalized": { phone, text, ... },
+        "buffer": { combined_text, messages_count, ... },
+        "routing": { used_llm, reason },
+        "llm": { provider, model, valid, result: { intent, entities, ... } },
+        "address_resolution": { matched_neighborhood, delivery_fee, ... }
+    }
+    """
+    normalized = data.get('normalized', {})
+    buffer = data.get('buffer', {})
+    routing = data.get('routing', {})
+    llm = data.get('llm')
+    address_resolution = data.get('address_resolution')
+
+    phone = normalized.get('phone', '')
+    text = buffer.get('combined_text') or normalized.get('text', '')
+    msg_type = normalized.get('msg_type', 'chat')
+    customer_name = normalized.get('customer_name', '')
+
+    logger.info(f"[N8N] Processando envelope: phone={phone}, used_llm={routing.get('used_llm')}, reason={routing.get('reason')}")
+
+    # Verifica se o chatbot está ativo
+    settings_obj = BusinessSettings.get_settings()
+    if not settings_obj.chatbot_enabled:
+        logger.info("Chatbot desativado - mensagem ignorada")
+        return JsonResponse({"status": "ignored", "reason": "chatbot_disabled"})
+
+    # Cria/atualiza cliente
+    if customer_name:
+        get_or_create_customer(phone, customer_name)
+
+    # IMPORTANTE: Verifica estado atual ANTES de decidir usar LLM
+    # Se estiver em fluxo de promoção ou outros estados específicos, usa fluxo padrão
+    current_state = get_conversation_state(phone).get('state', 'welcome')
+
+    # Estados que devem SEMPRE usar o fluxo padrão (não LLM)
+    priority_states = [
+        'awaiting_promo_pizza_1', 'awaiting_promo_pizza_2', 'awaiting_promo_more_items',
+        'awaiting_promo_another_item', 'awaiting_promo_order_type', 'awaiting_more_promo',
+        'awaiting_promo_half_or_full', 'awaiting_promo_second_after_half',
+        'awaiting_half_half_first', 'awaiting_half_half_second',
+        'awaiting_observation', 'awaiting_address', 'awaiting_payment',
+        'awaiting_change', 'awaiting_card_type', 'awaiting_confirmation',
+        'awaiting_neighborhood_confirm', 'awaiting_neighborhood_select',
+        'awaiting_more_items', 'awaiting_another_item', 'awaiting_drink',
+        'confirming_delivery', 'confirming_pickup', 'awaiting_payment_choice',
+        'awaiting_receipt', 'awaiting_payment_method'
+    ]
+
+    if current_state in priority_states:
+        logger.info(f"[N8N] Estado prioritário '{current_state}' - ignorando LLM, usando fluxo padrão")
+        return process_standard_message(phone, text, msg_type)
+
+    # Se NÃO usou LLM, processa normalmente (fluxo de estados)
+    if not routing.get('used_llm'):
+        return process_standard_message(phone, text, msg_type)
+
+    # Se usou LLM mas falhou validação, usa fallback
+    if llm and not llm.get('valid'):
+        logger.warning(f"[N8N] LLM inválido: {llm.get('validation_error')}")
+        return process_standard_message(phone, text, msg_type)
+
+    # Processa resultado do LLM
+    llm_result = llm.get('result', {}) if llm else {}
+    intent = llm_result.get('intent', 'other')
+    entities = llm_result.get('entities', {})
+
+    logger.info(f"[N8N] Intent={intent}, confidence={llm_result.get('confidence')}")
+
+    # Se tem resolução de endereço com match
+    if address_resolution and address_resolution.get('status') == 'matched':
+        matched = address_resolution.get('matched_neighborhood')
+        fee = address_resolution.get('delivery_fee')
+        logger.info(f"[N8N] Bairro matched: {matched}, fee={fee}")
+
+        # Atualiza estado com endereço resolvido
+        state = get_conversation_state(phone)
+        address_data = entities.get('address', {})
+
+        # Monta endereço completo
+        full_address = f"{address_data.get('address_line', '')} {address_data.get('number', '')}".strip()
+        if address_data.get('complement'):
+            full_address += f", {address_data.get('complement')}"
+
+        set_conversation_state(phone, state.get('state', 'welcome'), {
+            'address': full_address,
+            'neighborhood': matched,
+            'delivery_fee': float(fee) if fee else 0
+        })
+
+    # Se tem resolução de endereço que precisa confirmação
+    if address_resolution and address_resolution.get('status') == 'needs_confirmation':
+        candidates = address_resolution.get('candidates', [])[:3]
+        if candidates:
+            options = "\n".join([f"{i+1}. {c['name']} (R$ {c['fee']:.2f})" for i, c in enumerate(candidates)])
+            response = f"Não encontrei o bairro exato. Qual destes é o seu?\n\n{options}\n\nOu digite o nome correto."
+            send_whatsapp_message(phone, response)
+            return JsonResponse({"status": "ok", "action": "neighborhood_confirmation"})
+
+    # Se tem resolução de endereço não encontrado
+    if address_resolution and address_resolution.get('status') == 'not_found':
+        response = "Não consegui identificar o bairro. Por favor, digite apenas o nome do bairro (ex: Planalto, Aponia)."
+        send_whatsapp_message(phone, response)
+        return JsonResponse({"status": "ok", "action": "neighborhood_retry"})
+
+    # Processa intent do pedido
+    order_entities = entities.get('order', {})
+    items = order_entities.get('items', [])
+
+    if intent == 'add_item' and items:
+        return process_llm_add_item(phone, items, order_entities)
+
+    if intent == 'order_build' and items:
+        return process_llm_order_build(phone, items, order_entities)
+
+    if intent == 'provide_address':
+        return process_llm_address(phone, entities.get('address', {}), address_resolution)
+
+    if intent == 'choose_payment':
+        payment = entities.get('payment_method', 'unknown')
+        if payment != 'unknown':
+            return process_llm_payment(phone, payment, entities.get('change_for'))
+
+    if intent == 'provide_change':
+        change = entities.get('change_for')
+        if change:
+            return process_llm_change(phone, change)
+
+    # Para outros intents ou baixa confiança, usa fluxo normal
+    logger.info(f"[N8N] Fallback para fluxo normal: intent={intent}")
+    return process_standard_message(phone, text, msg_type)
+
+
+def process_standard_message(phone: str, text: str, msg_type: str) -> JsonResponse:
+    """Processa mensagem pelo fluxo de estados padrão."""
+    state = get_conversation_state(phone)
+    current_state = state.get("state", "welcome")
+
+    logger.info(f"[Standard] phone={phone}, state={current_state}, text={text[:50]}...")
+
+    # Verifica comandos especiais
+    if is_cancel_command(text):
+        response = handle_cancel(phone)
+        send_whatsapp_message(phone, response)
+        return JsonResponse({"status": "ok"})
+
+    if is_back_command(text):
+        success, response = go_back_state(phone)
+        send_whatsapp_message(phone, response)
+        return JsonResponse({"status": "ok"})
+
+    # Processa de acordo com o estado
+    response = dispatch_state_handler(phone, text, msg_type, current_state)
+
+    if response:
+        send_whatsapp_message(phone, response)
+
+    return JsonResponse({"status": "ok"})
+
+
+def dispatch_state_handler(phone: str, text: str, msg_type: str, current_state: str) -> str:
+    """Despacha para o handler correto baseado no estado."""
+    handlers = {
+        "welcome": lambda: handle_welcome(phone, text, msg_type),
+        "awaiting_pickup_items": lambda: handle_awaiting_items(phone, text, "PICKUP"),
+        "awaiting_promo_pizza_1": lambda: handle_promo_pizza_1(phone, text),
+        "awaiting_promo_pizza_2": lambda: handle_promo_pizza_2(phone, text),
+        "awaiting_promo_more_items": lambda: handle_promo_more_items(phone, text),
+        "awaiting_promo_another_item": lambda: handle_promo_another_item(phone, text),
+        "awaiting_promo_order_type": lambda: handle_promo_order_type(phone, text),
+        "awaiting_more_promo": lambda: handle_more_promo(phone, text),
+        "awaiting_half_half_first": lambda: handle_half_half_first(phone, text),
+        "awaiting_half_half_second": lambda: handle_half_half_second(phone, text),
+        "awaiting_observation": lambda: handle_observation(phone, text),
+        "awaiting_more_items": lambda: handle_awaiting_more_items(phone, text),
+        "awaiting_another_item": lambda: handle_awaiting_another_item(phone, text),
+        "awaiting_more_items_pickup": lambda: handle_awaiting_more_items_pickup(phone, text),
+        "awaiting_drink": lambda: handle_awaiting_drink(phone, text),
+        "awaiting_drink_pickup": lambda: handle_awaiting_drink_pickup(phone, text),
+        "awaiting_address": lambda: handle_awaiting_address(phone, text),
+        "awaiting_neighborhood_confirm": lambda: handle_neighborhood_confirm(phone, text),
+        "awaiting_neighborhood_select": lambda: handle_neighborhood_select(phone, text),
+        "confirming_delivery": lambda: handle_confirming_delivery(phone, text),
+        "confirming_pickup": lambda: handle_confirming_pickup(phone, text),
+        "awaiting_payment_choice": lambda: handle_payment_choice(phone, text),
+        "awaiting_receipt": lambda: handle_awaiting_receipt(phone, text, msg_type, None),
+        "awaiting_payment_method": lambda: handle_payment_method(phone, text),
+        "awaiting_change": lambda: handle_awaiting_change(phone, text),
+        "awaiting_card_type": lambda: handle_card_type(phone, text),
+        "awaiting_half_or_full": lambda: handle_half_or_full(phone, text),
+        "awaiting_promo_half_or_full": lambda: handle_promo_half_or_full(phone, text),
+        "awaiting_promo_second_after_half": lambda: handle_promo_second_after_half(phone, text),
+    }
+
+    handler = handlers.get(current_state, lambda: handle_welcome(phone, text, msg_type))
+    return handler()
+
+
+def process_llm_add_item(phone: str, items: list, order_entities: dict) -> JsonResponse:
+    """Processa intent add_item do LLM."""
+    state = get_conversation_state(phone)
+    current_items = state.get("data", {}).get("items", [])
+
+    for item in items:
+        product = find_product_fuzzy(item.get('name', ''))
+        if product:
+            new_item = {
+                "type": "single",
+                "product_id": product.id,
+                "quantity": item.get('quantity', 1),
+                "price": float(product.price)
+            }
+
+            # Processa modifiers (ignora se ingredient estiver vazio)
+            modifiers = item.get('modifiers', [])
+            obs_parts = []
+            for mod in modifiers:
+                ingredient = mod.get('ingredient', '').strip()
+                if ingredient:  # Só adiciona se tiver ingrediente
+                    if mod.get('type') == 'remove':
+                        obs_parts.append(f"sem {ingredient}")
+                    elif mod.get('type') == 'add':
+                        obs_parts.append(f"com {ingredient}")
+
+            notes = (item.get('notes') or '').strip()
+            if obs_parts or notes:
+                obs = ', '.join(obs_parts)
+                if notes:
+                    obs = f"{obs} - {notes}" if obs else notes
+                new_item['observation'] = obs
+
+            current_items.append(new_item)
+            logger.info(f"[LLM] Adicionado: {product.name} x{new_item['quantity']}")
+
+    if current_items:
+        set_conversation_state(phone, "awaiting_more_items", {
+            "items": current_items,
+            "order_type": state.get("data", {}).get("order_type", "DELIVERY")
+        })
+
+        # Monta resumo
+        summary = "Anotado! ✅\n\n"
+        for item in current_items[-len(items):]:  # Só os novos
+            try:
+                product = Product.objects.get(id=item["product_id"])
+                qty = item.get('quantity', 1)
+                summary += f"• {qty}x *{product.name}* - R$ {product.price:.2f}\n"
+                obs = item.get('observation', '').strip()
+                if obs:
+                    summary += f"  📝 {obs}\n"
+            except:
+                pass
+
+        # Se for ambíguo, pergunta
+        if order_entities.get('ambiguous'):
+            reason = order_entities.get('ambiguity_reason', '')
+            if reason:
+                summary += f"\n⚠️ {reason}\n\n"
+            else:
+                summary += "\n⚠️ Detectei mais de um sabor.\n\n"
+            summary += "É *meio a meio* ou *duas pizzas* separadas?\n"
+            summary += "1️⃣ Meio a meio\n"
+            summary += "2️⃣ Duas separadas"
+            set_conversation_state(phone, "awaiting_half_or_full", state.get("data", {}))
+        else:
+            summary += "\nQuer mais alguma pizza?\n"
+            summary += "1️⃣ Quero mais\n"
+            summary += "2️⃣ Só isso"
+
+        send_whatsapp_message(phone, summary)
+        return JsonResponse({"status": "ok", "action": "item_added"})
+
+    # Fallback se não encontrou nenhum produto
+    return process_standard_message(phone, items[0].get('name', ''), 'chat')
+
+
+def process_llm_order_build(phone: str, items: list, order_entities: dict) -> JsonResponse:
+    """Processa intent order_build do LLM (múltiplos itens)."""
+    return process_llm_add_item(phone, items, order_entities)
+
+
+def process_llm_address(phone: str, address: dict, address_resolution: dict) -> JsonResponse:
+    """Processa intent provide_address do LLM."""
+    state = get_conversation_state(phone)
+
+    # Se já tem match de bairro
+    if address_resolution and address_resolution.get('matched_neighborhood'):
+        neighborhood = address_resolution['matched_neighborhood']
+        fee = address_resolution.get('delivery_fee', 0)
+
+        full_address = f"{address.get('address_line', '')} {address.get('number', '')}".strip()
+        if address.get('complement'):
+            full_address += f", {address.get('complement')}"
+
+        set_conversation_state(phone, "confirming_delivery", {
+            "address": full_address,
+            "neighborhood": neighborhood,
+            "delivery_fee": float(fee)
+        })
+
+        # Busca itens do pedido
+        items = state.get("data", {}).get("items", [])
+        summary = format_order_summary(items, Decimal(str(fee)), 'DELIVERY')
+
+        response = f"Endereço: *{full_address}*\nBairro: *{neighborhood}*\nTaxa: *R$ {fee:.2f}*\n\n{summary}\n\nConfirma o pedido?\n1️⃣ Sim\n2️⃣ Não"
+        send_whatsapp_message(phone, response)
+        return JsonResponse({"status": "ok", "action": "address_confirmed"})
+
+    # Se não tem match, pede confirmação
+    response = "Por favor, confirme o bairro para calcular a taxa de entrega."
+    send_whatsapp_message(phone, response)
+    return JsonResponse({"status": "ok", "action": "address_needs_neighborhood"})
+
+
+def process_llm_payment(phone: str, payment_method: str, change_for: float = None) -> JsonResponse:
+    """Processa intent choose_payment do LLM."""
+    state = get_conversation_state(phone)
+
+    payment_map = {
+        'pix': 'PIX',
+        'cash': 'CASH',
+        'credit': 'CREDIT',
+        'debit': 'DEBIT',
+        'card': 'CREDIT'
+    }
+
+    method = payment_map.get(payment_method.lower(), 'PIX')
+
+    set_conversation_state(phone, state.get('state', 'welcome'), {
+        "payment_method": method,
+        "change_for": change_for
+    })
+
+    # Redireciona para handler apropriado
+    return process_standard_message(phone, payment_method, 'chat')
+
+
+def process_llm_change(phone: str, change_for: float) -> JsonResponse:
+    """Processa intent provide_change do LLM."""
+    state = get_conversation_state(phone)
+
+    set_conversation_state(phone, state.get('state', 'welcome'), {
+        "change_for": float(change_for)
+    })
+
+    return process_standard_message(phone, str(int(change_for)), 'chat')
 
 
 @csrf_exempt
 def bot_webhook(request):
-    """Webhook principal para receber mensagens do WAHA."""
+    """Webhook principal para receber mensagens do WAHA ou do n8n."""
     if request.method != 'POST':
         return JsonResponse({"error": "Method not allowed"}, status=405)
 
@@ -2466,6 +3511,11 @@ def bot_webhook(request):
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    # NOVO: Detecta envelope do n8n
+    if data.get('source') == 'n8n':
+        logger.info("[N8N] Recebido envelope do n8n")
+        return process_n8n_envelope(data)
 
     event = data.get('event')
 

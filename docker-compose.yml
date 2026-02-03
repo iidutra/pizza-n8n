@@ -55,6 +55,8 @@ services:
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
       - N8N_SECURE_COOKIE=false
+      # API Key para LLM (Groq - grátis)
+      - GROQ_API_KEY=${GROQ_API_KEY:-your_groq_api_key_here}
     volumes:
       - n8ndata:/home/node/.n8n
     depends_on:
@@ -66,31 +68,19 @@ services:
   waha:
     image: devlikeapro/waha:latest
     container_name: pizzaria-waha
-    restart: always
-    depends_on:
-      - redis
+    restart: unless-stopped
     environment:
-      WAHA_API_KEY: "pizzaria-api-key-123"
-      WAHA_API_KEY_PLAIN: "pizzaria-api-key-123"
-      REDIS_URL: "redis://redis:6379"
+      WHATSAPP_DEFAULT_ENGINE: "NOWEB"
       WAHA_PRINT_QR: "true"
-      WHATSAPP_DEFAULT_ENGINE: "GOWS"
-      WAHA_DASHBOARD_ENABLED: "true"
-      WAHA_DASHBOARD_USERNAME: "admin"
-      WAHA_DASHBOARD_PASSWORD: "admin123"
-      WHATSAPP_SWAGGER_ENABLED: "true"
-      WHATSAPP_SWAGGER_USERNAME: "admin"
-      WHATSAPP_SWAGGER_PASSWORD: "admin123"
+      WHATSAPP_RESTART_ALL_SESSIONS: "true"
       WHATSAPP_HOOK_URL: "http://n8n:5678/webhook/waha-inbound"
-      WHATSAPP_HOOK_EVENTS: "message,session.status"
-      WHATSAPP_HOOK_RETRIES_POLICY: "linear"
-      WHATSAPP_HOOK_RETRIES_DELAY_SECONDS: "2"
-      WHATSAPP_HOOK_RETRIES_ATTEMPTS: "4"
-      
+      WHATSAPP_HOOK_EVENTS: "message"
+      WAHA_LOG_LEVEL: "info"
+      WAHA_API_KEY: "pizzaria-api-key-123"
     ports:
       - "3000:3000"
     volumes:
-      - wahadata:/data
+      - wahadata:/app/.sessions
 
   web:
     build: .

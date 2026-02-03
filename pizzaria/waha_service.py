@@ -21,42 +21,69 @@ def get_headers():
     }
 
 
-def is_valid_phone(phone: str) -> bool:
-    """Verifica se é um número de telefone válido (não um LID)."""
-    if not phone:
+def is_valid_chat_id(chat_id: str) -> bool:
+    """Verifica se é um chat_id válido (telefone ou LID)."""
+    if not chat_id:
         return False
+
+    # Aceita LIDs (@lid)
+    if '@lid' in chat_id.lower():
+        return True
+
+    # Aceita formato completo (@c.us ou @s.whatsapp.net)
+    if '@c.us' in chat_id or '@s.whatsapp.net' in chat_id:
+        return True
+
+    # Remove não-dígitos para validar número
+    digits = ''.join(filter(str.isdigit, chat_id))
+
+    # Aceita números com 8-18 dígitos (cobre telefones e LIDs numéricos)
+    if len(digits) >= 8:
+        return True
+
+    return False
+
+
+def format_chat_id(chat_id: str) -> str:
+    """Formata o chat_id para o formato do WhatsApp."""
+    # Se já está no formato correto, retorna como está
+    if '@lid' in chat_id.lower():
+        return chat_id
+    if '@c.us' in chat_id:
+        return chat_id
+    if '@s.whatsapp.net' in chat_id:
+        return chat_id.replace('@s.whatsapp.net', '@c.us')
+
     # Remove não-dígitos
-    digits = ''.join(filter(str.isdigit, phone))
-    # Telefone brasileiro válido: 10-13 dígitos (com ou sem DDI 55)
-    # LIDs são muito longos (15+ dígitos) ou não começam com padrão brasileiro
-    if len(digits) < 10 or len(digits) > 13:
-        return False
-    # Se começa com 55, verifica o DDD (2 dígitos após 55)
-    if digits.startswith('55'):
-        ddd = digits[2:4]
-        # DDDs válidos do Brasil: 11-99
-        if not (11 <= int(ddd) <= 99):
-            return False
-    return True
+    phone = ''.join(filter(str.isdigit, chat_id))
 
-
-def format_phone(phone: str) -> str:
-    """Formata o telefone para o formato do WhatsApp."""
-    phone = ''.join(filter(str.isdigit, phone))
-    if not phone.startswith('55'):
+    # Adiciona 55 se for telefone brasileiro (não LID)
+    if len(phone) <= 13 and not phone.startswith('55'):
         phone = '55' + phone
+
     return f"{phone}@c.us"
 
 
+# Mantém compatibilidade com código antigo
+def is_valid_phone(phone: str) -> bool:
+    """Alias para is_valid_chat_id - mantido para compatibilidade."""
+    return is_valid_chat_id(phone)
+
+
+def format_phone(phone: str) -> str:
+    """Alias para format_chat_id - mantido para compatibilidade."""
+    return format_chat_id(phone)
+
+
 def send_whatsapp_message(phone: str, message: str) -> bool:
-    """Envia mensagem de texto via WAHA."""
+    """Envia mensagem de texto via WAHA. Aceita telefone ou LID."""
     try:
-        # Valida se é um número de telefone real
-        if not is_valid_phone(phone):
-            logger.warning(f"Numero invalido ignorado (provavelmente LID): {phone}")
+        # Valida se é um chat_id válido (telefone ou LID)
+        if not is_valid_chat_id(phone):
+            logger.warning(f"Chat ID invalido: {phone}")
             return False
 
-        chat_id = format_phone(phone)
+        chat_id = format_chat_id(phone)
 
         # Tenta múltiplos endpoints do WAHA (diferentes versões)
         endpoints = [
@@ -116,7 +143,7 @@ def send_whatsapp_image(phone: str, image_path: str, caption: str = "") -> bool:
         if not mimetype:
             mimetype = 'image/jpeg'
 
-        chat_id = format_phone(phone)
+        chat_id = format_chat_id(phone)
 
         # Formato da API WAHA v2024+
         url = f"{WAHA_URL}/api/{WAHA_SESSION}/sendImage"

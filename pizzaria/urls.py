@@ -16,6 +16,10 @@ urlpatterns = [
     # API REST
     path('api/', include(router.urls)),
     path('api/settings/', views.BusinessSettingsView.as_view(), name='api_settings'),
+
+    # Endpoints simplificados para n8n
+    path('api/n8n/neighborhoods/', views.neighborhoods_list, name='n8n_neighborhoods'),
+    path('api/n8n/products/', views.products_for_llm, name='n8n_products'),
     path('api/reports/summary/', views.ReportSummaryView.as_view(), name='api_report_summary'),
     path('api/reports/top-products/', views.TopProductsView.as_view(), name='api_top_products'),
     path('api/reports/hourly/', views.HourlyReportView.as_view(), name='api_hourly_report'),

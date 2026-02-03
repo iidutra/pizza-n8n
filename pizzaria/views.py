@@ -52,6 +52,45 @@ class DeliveryFeeViewSet(viewsets.ModelViewSet):
     search_fields = ['neighborhood']
 
 
+@api_view(['GET'])
+def neighborhoods_list(request):
+    """
+    Endpoint simplificado para n8n buscar lista de bairros.
+    Retorna apenas bairros ativos com nome e taxa.
+    """
+    fees = DeliveryFee.objects.filter(active=True).values('neighborhood', 'fee', 'estimated_time')
+    return Response({
+        'neighborhoods': [
+            {
+                'name': f['neighborhood'],
+                'fee': float(f['fee']),
+                'estimated_time': f['estimated_time']
+            }
+            for f in fees
+        ]
+    })
+
+
+@api_view(['GET'])
+def products_for_llm(request):
+    """
+    Endpoint simplificado para n8n buscar cardápio para o LLM.
+    Retorna apenas produtos ativos com nome e preço.
+    """
+    products = Product.objects.filter(active=True).values('id', 'name', 'price', 'category')
+    return Response({
+        'products': [
+            {
+                'id': p['id'],
+                'name': p['name'],
+                'price': float(p['price']),
+                'category': p['category']
+            }
+            for p in products
+        ]
+    })
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.all().select_related('customer').prefetch_related('items__product')
     filterset_fields = ['status', 'order_type', 'payment_status', 'neighborhood']
