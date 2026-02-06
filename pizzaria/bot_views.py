@@ -1123,14 +1123,20 @@ def send_welcome_with_menu(phone: str) -> str:
     """Envia saudação com promoção."""
     settings_obj = BusinessSettings.get_settings()
 
-    welcome = "Boa noite, ja estamos atendendo.\n\n"
+    welcome = "Boa noite, já estamos atendendo! 🍕\n\n"
 
     # Adiciona promoção se ativa
     if settings_obj.promo_active and settings_obj.promo_text:
-        welcome += "🔥 *PROMOÇÃO:* 2 Pizzas Grandes por R$ 55,00!\n"
-        welcome += "(Delivery ou retirada — taxa de entrega conforme o bairro)\n\n"
-        welcome += "1️⃣ Quero a promoção (2 pizzas)\n"
-        welcome += "2️⃣ Ver cardápio\n"
+        welcome += "🔥 *PROMOÇÃO DO DIA* 🔥\n"
+        welcome += "━━━━━━━━━━━━━━━━━━━━\n"
+        welcome += "🍕 *2 PIZZAS* tamanho *G*\n"
+        welcome += "   _(Grande - 8 pedaços cada)_\n"
+        welcome += "💰 Por apenas *R$ 55,00*\n"
+        welcome += "━━━━━━━━━━━━━━━━━━━━\n"
+        welcome += "📦 Delivery ou retirada no local\n"
+        welcome += "🚗 Taxa de entrega conforme o bairro\n\n"
+        welcome += "1️⃣ Quero a *PROMOÇÃO* (2 pizzas G por R$55)\n"
+        welcome += "2️⃣ Ver cardápio completo\n"
         welcome += "3️⃣ Já sei o que quero"
     else:
         welcome += "1️⃣ Ver cardápio\n"
