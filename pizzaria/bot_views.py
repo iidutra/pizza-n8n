@@ -477,10 +477,11 @@ def find_product_fuzzy(text: str) -> Product:
         return None
 
     # Ignora palavras genéricas que não são sabores
-    ignore_words = ['pizza', 'grande', 'media', 'média', 'pequena', 'quero', 'uma', 'duas', 'favor', 'por']
+    ignore_words = ['pizza', 'grande', 'media', 'média', 'pequena', 'quero', 'uma', 'duas', 'favor', 'por', 'doce', 'salgada', 'sabor']
     clean_text = text
     for word in ignore_words:
-        clean_text = clean_text.replace(word, '').strip()
+        clean_text = re.sub(rf'\b{word}\b', '', clean_text).strip()
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()  # Remove espaços extras
 
     # Se sobrou só espaço ou nada, não encontrou
     if not clean_text or len(clean_text) < 3:
@@ -506,9 +507,13 @@ def find_product_fuzzy(text: str) -> Product:
         ("marguerita", "marguerita"), ("margerita", "marguerita"),
         ("pepperoni", "pepperoni"), ("peperoni", "pepperoni"),
         # Pizzas doces
-        ("brigadeiro", "brigadeiro"),
-        ("prestigio", "prestígio"), ("prestígio", "prestígio"),
-        ("banana", "banana"),
+        ("brigadeiro", "brigadeiro"), ("doce brigadeiro", "brigadeiro"),
+        ("prestigio", "prestígio"), ("prestígio", "prestígio"), ("doce prestigio", "prestígio"),
+        ("banana com canela", "banana com canela"), ("banana canela", "banana com canela"), ("banana", "banana com canela"),
+        ("romeu e julieta", "romeu e julieta"), ("romeu julieta", "romeu e julieta"),
+        ("chocolate", "chocolate"), ("doce chocolate", "chocolate"),
+        ("nutella", "nutella"), ("doce nutella", "nutella"),
+        ("morango", "morango"), ("doce morango", "morango"),
     ]
 
     for keyword, name in pizza_keywords:
@@ -734,7 +739,7 @@ def parse_two_pizza_names(text: str) -> tuple:
     text_lower = text.lower().strip()
 
     # Remove prefixos comuns
-    text_lower = re.sub(r'^(quero|uma|pizza|a)\s+', '', text_lower)
+    text_lower = re.sub(r'^(quero|uma|pizza|a|doce|salgada)\s+', '', text_lower)
     text_lower = re.sub(r'\s+(quero|uma|pizza)\s+', ' ', text_lower)
 
     # Detecta padrão "X metade Y e Z metade W" (duas pizzas meio a meio)
@@ -758,21 +763,54 @@ def parse_two_pizza_names(text: str) -> tuple:
         if pizza1 and pizza2:
             return pizza1, pizza2
 
-    # Separadores possíveis: " e ", " com ", " + "
-    separators = [' e ', ' com ', ' + ', ', ']
+    # Lista de nomes compostos de pizza que não devem ser divididos
+    composite_names = [
+        'banana com canela', 'frango com catupiry', 'frango com cheddar', 'frango com milho',
+        'calabresa com catupiry', 'romeu e julieta', '4 queijos', 'quatro queijos'
+    ]
 
-    for sep in separators:
-        if sep in text_lower:
-            parts = text_lower.split(sep, 1)  # Divide apenas na primeira ocorrência
+    # Separador principal: " e " (mas não divide nomes compostos como "romeu e julieta")
+    if ' e ' in text_lower:
+        # Verifica se o " e " faz parte de um nome composto
+        is_composite = False
+        for name in composite_names:
+            if name in text_lower and ' e ' in name:
+                is_composite = True
+                break
+
+        if not is_composite:
+            parts = text_lower.split(' e ', 1)
             if len(parts) == 2:
                 part1 = parts[0].strip()
                 part2 = parts[1].strip()
 
-                # Remove "metade", "meia", etc que sobrou
+                # Remove "metade", "meia", "doce" etc que sobrou
                 part1 = re.sub(r'\s*(metade|meia|meio)\s*$', '', part1)
-                part2 = re.sub(r'^\s*(metade|meia|meio)\s*', '', part2)
+                part1 = re.sub(r'^(doce|salgada)\s+', '', part1)
+                part2 = re.sub(r'^\s*(metade|meia|meio|doce|salgada)\s*', '', part2)
 
-                # Tenta encontrar cada parte como pizza
+                if part1 and part2:
+                    pizza1 = find_product_fuzzy(part1)
+                    pizza2 = find_product_fuzzy(part2)
+
+                    if pizza1 and pizza2:
+                        return pizza1, pizza2
+
+    # Outros separadores: " + ", ", " (mas NÃO " com " pois faz parte de nomes de pizza)
+    other_separators = [' + ', ', ']
+
+    for sep in other_separators:
+        if sep in text_lower:
+            parts = text_lower.split(sep, 1)
+            if len(parts) == 2:
+                part1 = parts[0].strip()
+                part2 = parts[1].strip()
+
+                # Remove prefixos/sufixos
+                part1 = re.sub(r'\s*(metade|meia|meio)\s*$', '', part1)
+                part1 = re.sub(r'^(doce|salgada)\s+', '', part1)
+                part2 = re.sub(r'^\s*(metade|meia|meio|doce|salgada)\s*', '', part2)
+
                 if part1 and part2:
                     pizza1 = find_product_fuzzy(part1)
                     pizza2 = find_product_fuzzy(part2)
