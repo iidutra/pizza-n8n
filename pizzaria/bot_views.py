@@ -1638,37 +1638,122 @@ def handle_promo_second_after_half(phone: str, message: str) -> str:
     items = state["data"].get("items", [])
     order_type = state["data"].get("order_type", "DELIVERY")
 
+    promo_price = Decimal('27.50')
+
+    # Busca o último item half_half (da primeira pizza da promoção)
+    first_half_half = None
+    for item in reversed(items):
+        if item.get("type") == "half_half":
+            first_half_half = item
+            break
+
+    first_pizza1_name = first_half_half.get("pizza1_name", "") if first_half_half else ""
+    first_pizza2_name = first_half_half.get("pizza2_name", "") if first_half_half else ""
+
+    # Verifica se digitou dois números para meio a meio (ex: "1 e 4", "1,4")
+    two_numbers = parse_two_numbers(message)
+    if two_numbers:
+        num1, num2 = two_numbers
+        pizzas = list(Product.objects.filter(category__in=['PIZZA', 'PIZZA_DOCE'], active=True).order_by('category', 'name'))
+        if 1 <= num1 <= len(pizzas) and 1 <= num2 <= len(pizzas):
+            half_pizza1 = pizzas[num1 - 1]
+            half_pizza2 = pizzas[num2 - 1]
+
+            # Segunda pizza será meio a meio também
+            items.append({
+                "type": "half_half",
+                "pizza1_id": half_pizza1.id,
+                "pizza2_id": half_pizza2.id,
+                "pizza1_name": half_pizza1.name,
+                "pizza2_name": half_pizza2.name,
+                "price": float(promo_price),
+                "promo_price": float(promo_price),
+                "quantity": 1
+            })
+
+            set_conversation_state(phone, "awaiting_promo_more_items", {
+                "items": items,
+                "promo": True,
+                "pizza_1_name": f"½ {first_pizza1_name} + ½ {first_pizza2_name}",
+                "pizza_2_name": f"½ {half_pizza1.name} + ½ {half_pizza2.name}",
+            })
+
+            return (
+                f"Perfeito! ✅ Segunda pizza também meio a meio!\n\n"
+                f"🍕 *½ {first_pizza1_name} + ½ {first_pizza2_name}*\n"
+                f"🍕 *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n"
+                f"💰 *Total da promoção: R$ 55,00*\n\n"
+                f"Quer adicionar mais pizza?\n"
+                f"1️⃣ Mais promoção (2 por R$55)\n"
+                f"2️⃣ Pizza avulsa\n"
+                f"3️⃣ Não, só isso\n\n"
+                f"_'voltar' | 'sair'_"
+            )
+
+    # Verifica se digitou dois nomes de pizza para meio a meio (ex: "4 queijos e calabresa")
+    two_pizzas = parse_two_pizza_names(message)
+    if two_pizzas:
+        half_pizza1, half_pizza2 = two_pizzas
+
+        # Segunda pizza será meio a meio também
+        items.append({
+            "type": "half_half",
+            "pizza1_id": half_pizza1.id,
+            "pizza2_id": half_pizza2.id,
+            "pizza1_name": half_pizza1.name,
+            "pizza2_name": half_pizza2.name,
+            "price": float(promo_price),
+            "promo_price": float(promo_price),
+            "quantity": 1
+        })
+
+        set_conversation_state(phone, "awaiting_promo_more_items", {
+            "items": items,
+            "promo": True,
+            "pizza_1_name": f"½ {first_pizza1_name} + ½ {first_pizza2_name}",
+            "pizza_2_name": f"½ {half_pizza1.name} + ½ {half_pizza2.name}",
+        })
+
+        return (
+            f"Perfeito! ✅ Segunda pizza também meio a meio!\n\n"
+            f"🍕 *½ {first_pizza1_name} + ½ {first_pizza2_name}*\n"
+            f"🍕 *½ {half_pizza1.name} + ½ {half_pizza2.name}*\n"
+            f"💰 *Total da promoção: R$ 55,00*\n\n"
+            f"Quer adicionar mais pizza?\n"
+            f"1️⃣ Mais promoção (2 por R$55)\n"
+            f"2️⃣ Pizza avulsa\n"
+            f"3️⃣ Não, só isso\n\n"
+            f"_'voltar' | 'sair'_"
+        )
+
+    # Pizza inteira (sabor único)
     product, observation = find_product_with_observation(message)
     if not product:
-        return "Hmm, não achei esse sabor 🤔 Pode repetir ou digitar o número do cardápio?\n\n_'voltar' | 'sair'_"
+        return (
+            "Hmm, não achei esse sabor 🤔\n\n"
+            "Pode digitar:\n"
+            "• O número do cardápio (ex: 5)\n"
+            "• O nome da pizza (ex: calabresa)\n"
+            "• Dois sabores pra meio a meio (ex: 1 e 4, ou calabresa e bacon)\n\n"
+            "_'voltar' | 'sair'_"
+        )
 
-    promo_price = Decimal('27.50')
     new_item = {"product_id": product.id, "quantity": 1, "promo_price": float(promo_price)}
     if observation:
         new_item["observation"] = observation
     items.append(new_item)
 
-    # Monta nomes para exibição - busca o último item half_half (da promoção atual)
-    half_half = None
-    for item in reversed(items):
-        if item.get("type") == "half_half":
-            half_half = item
-            break
-
-    pizza1_name = half_half.get("pizza1_name", "") if half_half else ""
-    pizza2_name = half_half.get("pizza2_name", "") if half_half else ""
-
     set_conversation_state(phone, "awaiting_promo_more_items", {
         "items": items,
         "promo": True,
-        "pizza_1_name": f"½ {pizza1_name} + ½ {pizza2_name}",
+        "pizza_1_name": f"½ {first_pizza1_name} + ½ {first_pizza2_name}",
         "pizza_2_name": product.name,
     })
 
     obs_display = f" _{observation}_" if observation else ""
     return (
         f"Perfeito! ✅ Segunda pizza: *{product.name}*{obs_display}\n\n"
-        f"🍕 *½ {pizza1_name} + ½ {pizza2_name}* (meio a meio)\n"
+        f"🍕 *½ {first_pizza1_name} + ½ {first_pizza2_name}* (meio a meio)\n"
         f"🍕 *{product.name}*{obs_display}\n"
         f"💰 *Total da promoção: R$ 55,00*\n\n"
         f"Quer adicionar mais pizza?\n"
