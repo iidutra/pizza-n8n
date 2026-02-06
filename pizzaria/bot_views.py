@@ -2516,8 +2516,7 @@ def handle_confirming_pickup(phone: str, message: str) -> str:
         order = Order.objects.create(
             customer=customer,
             order_type='PICKUP',
-            status='PREPARING',
-            payment_status='PAY_ON_DELIVERY'
+            status='AWAITING_PAYMENT'
         )
 
         for item_data in items:
@@ -2566,14 +2565,16 @@ def handle_confirming_pickup(phone: str, message: str) -> str:
         order.calculate_totals()
         order.save()
 
-        clear_conversation_state(phone)
+        set_conversation_state(phone, "awaiting_payment_choice", {"order_id": order.id})
 
         return (
-            f"Pedido confirmado! ✅🍕\n\n"
-            f"Já tô preparando! Quando ficar pronto eu te aviso aqui, beleza?\n\n"
-            f"📍 *Retirar em:* {PICKUP_ADDRESS}\n"
-            f"🗺️ {PICKUP_MAPS_LINK}\n\n"
-            f"A Pizzaria do Negão agradece! ❤️"
+            f"Pedido confirmado! ✅\n\n"
+            f"💰 *Como vai ser o pagamento?*\n\n"
+            f"1️⃣ *PIX* (envia comprovante)\n"
+            f"2️⃣ *Dinheiro* (paga na retirada)\n"
+            f"3️⃣ *Cartão Crédito* (+R$ 2,00 taxa maquininha)\n"
+            f"4️⃣ *Cartão Débito* (+R$ 2,00 taxa maquininha)\n\n"
+            f"_'voltar' | 'cancelar'_"
         )
 
     if message_lower in ['2', 'nao', 'não', 'n', 'cancelar']:
@@ -2998,14 +2999,15 @@ def handle_payment_choice(phone: str, message: str) -> str:
         )
 
     # 2. Dinheiro - aceita várias formas
-    cash_variations = ['2', 'dinheiro', 'cash', 'em dinheiro', 'no dinheiro', 'especie', 'espécie', 'na entrega']
+    cash_variations = ['2', 'dinheiro', 'cash', 'em dinheiro', 'no dinheiro', 'especie', 'espécie', 'na entrega', 'na retirada']
     if any(v in message_lower for v in cash_variations) and 'cartao' not in message_lower and 'cartão' not in message_lower:
         order.payment_method = 'CASH'
         order.payment_status = 'PAY_ON_DELIVERY'
         order.save()
         set_conversation_state(phone, "awaiting_change", {"order_id": order.id})
+        payment_moment = "na retirada" if order.order_type == 'PICKUP' else "na entrega"
         return (
-            f"Beleza! 💵 *Pagamento em dinheiro na entrega.*\n\n"
+            f"Beleza! 💵 *Pagamento em dinheiro {payment_moment}.*\n\n"
             f"Vai precisar de troco? Se sim, pra quanto?\n\n"
             f"_Digite o valor (ex: 100) ou 'não' se não precisar_"
         )
@@ -3021,6 +3023,18 @@ def handle_payment_choice(phone: str, message: str) -> str:
         order.save()
         clear_conversation_state(phone)
 
+        if order.order_type == 'PICKUP':
+            return (
+                f"Pedido confirmado! ✅\n\n"
+                f"💳 *Pagamento: Cartão de Crédito*\n"
+                f"(+R$ 2,00 taxa maquininha)\n\n"
+                f"*Total: R$ {order.total:.2f}*\n\n"
+                f"Seu pedido já está sendo preparado! 🍕\n"
+                f"Te aviso quando estiver pronto!\n\n"
+                f"📍 *Retirar em:* {PICKUP_ADDRESS}\n"
+                f"🗺️ {PICKUP_MAPS_LINK}\n\n"
+                f"A Pizzaria do Negão agradece! ❤️"
+            )
         return (
             f"Pedido confirmado! ✅\n\n"
             f"💳 *Pagamento: Cartão de Crédito*\n"
@@ -3042,6 +3056,18 @@ def handle_payment_choice(phone: str, message: str) -> str:
         order.save()
         clear_conversation_state(phone)
 
+        if order.order_type == 'PICKUP':
+            return (
+                f"Pedido confirmado! ✅\n\n"
+                f"💳 *Pagamento: Cartão de Débito*\n"
+                f"(+R$ 2,00 taxa maquininha)\n\n"
+                f"*Total: R$ {order.total:.2f}*\n\n"
+                f"Seu pedido já está sendo preparado! 🍕\n"
+                f"Te aviso quando estiver pronto!\n\n"
+                f"📍 *Retirar em:* {PICKUP_ADDRESS}\n"
+                f"🗺️ {PICKUP_MAPS_LINK}\n\n"
+                f"A Pizzaria do Negão agradece! ❤️"
+            )
         return (
             f"Pedido confirmado! ✅\n\n"
             f"💳 *Pagamento: Cartão de Débito*\n"
@@ -3143,11 +3169,12 @@ def handle_awaiting_receipt(phone: str, message: str, msg_type: str, media_url: 
             f"A Pizzaria do Negão agradece pela preferência! ❤️"
         )
 
-    # Permite pagar na entrega
-    if any(word in message_lower for word in ['pagar na entrega', 'pago na entrega', 'na entrega', 'entrega']):
+    # Permite pagar na entrega/retirada
+    if any(word in message_lower for word in ['pagar na entrega', 'pago na entrega', 'na entrega', 'entrega', 'pagar na retirada', 'pago na retirada', 'na retirada', 'retirada']):
         set_conversation_state(phone, "awaiting_payment_method", {"order_id": order.id})
+        payment_moment = "na retirada" if order.order_type == 'PICKUP' else "na entrega"
         return (
-            f"Beleza! Como vai ser o pagamento na entrega?\n\n"
+            f"Beleza! Como vai ser o pagamento {payment_moment}?\n\n"
             f"1️⃣ Dinheiro 💵\n"
             f"2️⃣ Cartão 💳 (taxa de R$ 2,00 da maquininha)\n\n"
             f"_'voltar' | 'cancelar'_"
@@ -3241,6 +3268,17 @@ def handle_awaiting_change(phone: str, message: str) -> str:
 
         clear_conversation_state(phone)
         settings_obj = BusinessSettings.get_settings()
+
+        if order.order_type == 'PICKUP':
+            return (
+                f"Pedido confirmado! 💵\n\n"
+                f"Pagamento: *Dinheiro* (sem troco)\n\n"
+                f"Seu pedido já está sendo preparado! 🍕\n"
+                f"Te aviso quando estiver pronto!\n\n"
+                f"📍 *Retirar em:* {PICKUP_ADDRESS}\n"
+                f"🗺️ {PICKUP_MAPS_LINK}\n\n"
+                f"A Pizzaria do Negão agradece! ❤️"
+            )
         return (
             f"Pedido confirmado! 💵\n\n"
             f"Pagamento: *Dinheiro* (sem troco)\n\n"
@@ -3262,6 +3300,18 @@ def handle_awaiting_change(phone: str, message: str) -> str:
 
         clear_conversation_state(phone)
         settings_obj = BusinessSettings.get_settings()
+
+        if order.order_type == 'PICKUP':
+            return (
+                f"Pedido confirmado! 💵\n\n"
+                f"Pagamento: *Dinheiro*\n"
+                f"💰 Troco pra: R$ {change_for},00\n\n"
+                f"Seu pedido já está sendo preparado! 🍕\n"
+                f"Te aviso quando estiver pronto!\n\n"
+                f"📍 *Retirar em:* {PICKUP_ADDRESS}\n"
+                f"🗺️ {PICKUP_MAPS_LINK}\n\n"
+                f"A Pizzaria do Negão agradece! ❤️"
+            )
         return (
             f"Pedido confirmado! 💵\n\n"
             f"Pagamento: *Dinheiro*\n"
@@ -3308,6 +3358,18 @@ def handle_card_type(phone: str, message: str) -> str:
 
     clear_conversation_state(phone)
     settings_obj = BusinessSettings.get_settings()
+
+    if order.order_type == 'PICKUP':
+        return (
+            f"Pedido confirmado! 💳\n\n"
+            f"Pagamento: *Cartão {card_name}*\n"
+            f"⚠️ Taxa da maquininha: R$ 2,00\n\n"
+            f"Seu pedido já está sendo preparado! 🍕\n"
+            f"Te aviso quando estiver pronto!\n\n"
+            f"📍 *Retirar em:* {PICKUP_ADDRESS}\n"
+            f"🗺️ {PICKUP_MAPS_LINK}\n\n"
+            f"A Pizzaria do Negão agradece! ❤️"
+        )
     return (
         f"Pedido confirmado! 💳\n\n"
         f"Pagamento: *Cartão {card_name}*\n"
