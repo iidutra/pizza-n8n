@@ -75,6 +75,46 @@ def format_phone(phone: str) -> str:
     return format_chat_id(phone)
 
 
+def send_whatsapp_buttons(phone: str, body: str, buttons: list[str]) -> bool:
+    """Envia mensagem com botões de resposta rápida (fallback para texto)."""
+    if not buttons:
+        return send_whatsapp_message(phone, body)
+
+    try:
+        if not is_valid_chat_id(phone):
+            return False
+        chat_id = format_chat_id(phone)
+        labels = buttons[:3]
+        endpoints = [
+            (f"{WAHA_URL}/api/sendButtons", {
+                "session": WAHA_SESSION,
+                "chatId": chat_id,
+                "headerText": "",
+                "body": body,
+                "footerText": "",
+                "buttons": [{"type": "reply", "id": str(i), "text": label} for i, label in enumerate(labels)],
+            }),
+            (f"{WAHA_URL}/api/{WAHA_SESSION}/sendButtons", {
+                "chatId": chat_id,
+                "text": body,
+                "buttons": labels,
+            }),
+        ]
+        for url, payload in endpoints:
+            try:
+                response = requests.post(url, json=payload, headers=get_headers(), timeout=30)
+                if response.status_code in (200, 201):
+                    logger.info(f"Botoes enviados para {phone}")
+                    return True
+            except Exception as e:
+                logger.warning(f"sendButtons falhou em {url}: {e}")
+    except Exception as e:
+        logger.warning(f"send_whatsapp_buttons: {e}")
+
+    fallback = body + "\n\n" + " | ".join(f"*{b}*" for b in buttons[:3])
+    return send_whatsapp_message(phone, fallback)
+
+
 def send_whatsapp_message(phone: str, message: str) -> bool:
     """Envia mensagem de texto via WAHA. Aceita telefone ou LID."""
     try:

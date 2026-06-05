@@ -2,18 +2,18 @@
 
 ## Visão Geral
 
-O sistema utiliza o modelo **Llama 3.3 70B** via **Groq API** para interpretar mensagens de clientes em linguagem natural e extrair informações estruturadas (intenção, entidades, pedidos).
+O sistema utiliza o modelo **Claude Haiku 4.5** via **Anthropic API** para interpretar mensagens de clientes em linguagem natural e extrair informações estruturadas (intenção, entidades, pedidos).
 
 ## Arquitetura
 
 ```
-Cliente (WhatsApp) → WAHA → n8n → Groq LLM → Django
+Cliente (WhatsApp) → WAHA → n8n → Claude Haiku (Anthropic) → Django
                               ↓
                     [Router decide se usa LLM]
                               ↓
                     [Se sim: busca cardápio + bairros]
                               ↓
-                    [Envia para Groq com contexto]
+                    [Envia para Anthropic com contexto]
                               ↓
                     [Parse da resposta JSON]
                               ↓
@@ -119,6 +119,15 @@ Quando o cliente pedir várias pizzas da promoção, agrupar em pares:
   }
 }
 ```
+
+### Regra 11: Erros de Digitação e Linguagem Oral
+Aceite variações comuns de clientes com baixa literacia:
+- `klabresa`, `calabre`, `4 keijo`, `qro`, `duas de calabresa`
+- Use o cardápio como referência para interpretar
+
+### Regra 12: Áudio Transcrito
+Mensagens vindas de transcrição Whisper podem ter palavras imprecisas.
+Interprete pelo contexto — nunca rejeite por erro ortográfico.
 
 ---
 
@@ -336,6 +345,7 @@ O router no n8n identifica padrões "seguros" que não precisam de LLM:
 
 | Condição | Exemplo |
 |----------|---------|
+| **Áudio transcrito** | Qualquer pedido enviado por áudio |
 | Múltiplas mensagens (buffer > 1) | Mensagens enviadas rapidamente |
 | Texto com sabores | "calabresa", "4 queijos" |
 | Endereços | "rua", "avenida", número |
@@ -350,11 +360,14 @@ O router no n8n identifica padrões "seguros" que não precisam de LLM:
 
 | Parâmetro | Valor |
 |-----------|-------|
-| Modelo | `llama-3.3-70b-versatile` |
-| Provider | Groq |
+| Modelo | `claude-haiku-4-5` |
+| Provider | Anthropic |
 | Temperature | 0.1 (baixa para respostas consistentes) |
-| Response Format | JSON Object |
+| Max tokens | 2048 |
+| Formato | JSON via prompt (system instrui retorno JSON puro) |
 | Timeout | 15 segundos |
+
+> **STT (áudio):** continua no **Groq Whisper** (`whisper-large-v3-turbo`) — só o LLM de interpretação usa Haiku.
 
 ---
 

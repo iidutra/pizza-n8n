@@ -12,29 +12,42 @@
       "name": "WAHA Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [200, 300],
+      "position": [
+        200,
+        300
+      ],
       "webhookId": "pizzaria-waha-inbound"
     },
     {
       "parameters": {
-        "jsCode": "// ===========================================\n// NODE 1: NORMALIZAR E VALIDAR MENSAGEM\n// Aceita telefones E LIDs como identificadores\n// ===========================================\n\nconst input = $input.first().json;\nconst body = input.body || input;\nconst event = body.event;\nconst payload = body.payload || {};\n\n// Validações básicas\nif (event !== 'message' && event !== 'message.any') {\n  return [{ json: { skip: true, reason: 'not_message_event', event } }];\n}\n\nif (payload.fromMe === true) {\n  return [{ json: { skip: true, reason: 'from_me' } }];\n}\n\nif (payload.isStatus || payload.broadcast) {\n  return [{ json: { skip: true, reason: 'status_or_broadcast' } }];\n}\n\n// Valida timestamp (ignora mensagens > 120s)\nconst currentTime = Math.floor(Date.now() / 1000);\nlet timestamp = payload.timestamp || payload.t || payload._data?.t;\nif (timestamp) {\n  if (timestamp > 9999999999) timestamp = Math.floor(timestamp / 1000);\n  const messageAge = currentTime - timestamp;\n  if (messageAge > 120) {\n    return [{ json: { skip: true, reason: 'old_message', age: messageAge } }];\n  }\n}\n\n// Extrai chat_id - aceita telefones E LIDs\nconst _data = payload._data || {};\nconst info = _data.Info || {};\n\n// Lista de campos para tentar (em ordem de prioridade)\nconst candidates = [\n  payload.chatId,\n  payload.from,\n  info.RemoteJid,\n  _data.RemoteJid,\n  payload.participant\n].filter(Boolean);\n\nlet chatId = null;\nlet isLid = false;\n\nfor (const candidate of candidates) {\n  if (!candidate) continue;\n  \n  // Aceita LIDs diretamente\n  if (candidate.includes('@lid')) {\n    chatId = candidate;\n    isLid = true;\n    break;\n  }\n  \n  // Aceita formatos @c.us e @s.whatsapp.net\n  if (candidate.includes('@c.us') || candidate.includes('@s.whatsapp.net')) {\n    chatId = candidate;\n    break;\n  }\n  \n  // Tenta extrair número puro\n  let num = candidate.split('@')[0].split(':')[0];\n  num = num.replace(/\\D/g, '');\n  \n  if (num.length >= 8) {\n    chatId = num + '@c.us';\n    break;\n  }\n}\n\nif (!chatId) {\n  return [{ json: { skip: true, reason: 'no_chat_id_found' } }];\n}\n\n// Extrai o identificador (parte antes do @)\nconst phone = chatId.split('@')[0].split(':')[0];\n\n// Extrai texto e metadata\nconst text = (payload.body || '').trim();\nconst messageId = payload.id || info.ID || `${phone}_${currentTime}`;\nconst msgType = payload.type || _data.Type || 'chat';\nconst customerName = info.PushName || payload.notifyName || '';\n\n// Ignora mensagens vazias (exceto se for mídia)\nif (!text && msgType === 'chat') {\n  return [{ json: { skip: true, reason: 'empty_message' } }];\n}\n\n// Retorna dados normalizados - usa chat_id completo como identificador\nreturn [{\n  json: {\n    skip: false,\n    is_lid: isLid,\n    normalized: {\n      channel: 'whatsapp',\n      phone: chatId,\n      chat_id: chatId,\n      text: text,\n      message_id: messageId,\n      timestamp: timestamp || currentTime,\n      msg_type: msgType,\n      customer_name: customerName\n    },\n    _raw: body\n  }\n}];"
+        "jsCode": "// ===========================================\n// NODE 1: NORMALIZAR E VALIDAR MENSAGEM\n// Aceita telefones E LIDs como identificadores\n// ===========================================\n\nconst input = $input.first().json;\nconst body = input.body || input;\nconst event = body.event;\nconst payload = body.payload || {};\n\n// Validações básicas\nif (event !== 'message' && event !== 'message.any') {\n  return [{ json: { skip: true, reason: 'not_message_event', event } }];\n}\n\nif (payload.fromMe === true) {\n  return [{ json: { skip: true, reason: 'from_me' } }];\n}\n\nif (payload.isStatus || payload.broadcast) {\n  return [{ json: { skip: true, reason: 'status_or_broadcast' } }];\n}\n\n// Valida timestamp (ignora mensagens > 120s)\nconst currentTime = Math.floor(Date.now() / 1000);\nlet timestamp = payload.timestamp || payload.t || payload._data?.t;\nif (timestamp) {\n  if (timestamp > 9999999999) timestamp = Math.floor(timestamp / 1000);\n  const messageAge = currentTime - timestamp;\n  if (messageAge > 120) {\n    return [{ json: { skip: true, reason: 'old_message', age: messageAge } }];\n  }\n}\n\n// Extrai chat_id - aceita telefones E LIDs\nconst _data = payload._data || {};\nconst info = _data.Info || {};\n\n// Lista de campos para tentar (em ordem de prioridade)\nconst candidates = [\n  payload.chatId,\n  payload.from,\n  info.RemoteJid,\n  _data.RemoteJid,\n  payload.participant\n].filter(Boolean);\n\nlet chatId = null;\nlet isLid = false;\n\nfor (const candidate of candidates) {\n  if (!candidate) continue;\n  \n  // Aceita LIDs diretamente\n  if (candidate.includes('@lid')) {\n    chatId = candidate;\n    isLid = true;\n    break;\n  }\n  \n  // Aceita formatos @c.us e @s.whatsapp.net\n  if (candidate.includes('@c.us') || candidate.includes('@s.whatsapp.net')) {\n    chatId = candidate;\n    break;\n  }\n  \n  // Tenta extrair número puro\n  let num = candidate.split('@')[0].split(':')[0];\n  num = num.replace(/\\D/g, '');\n  \n  if (num.length >= 8) {\n    chatId = num + '@c.us';\n    break;\n  }\n}\n\nif (!chatId) {\n  return [{ json: { skip: true, reason: 'no_chat_id_found' } }];\n}\n\n// Extrai o identificador (parte antes do @)\nconst phone = chatId.split('@')[0].split(':')[0];\n\n// Extrai texto e metadata\nconst text = (payload.body || '').trim();\nconst messageId = payload.id || info.ID || `${phone}_${currentTime}`;\nconst msgType = payload.type || _data.Type || 'chat';\nconst customerName = info.PushName || payload.notifyName || '';\n\nconst AUDIO_TYPES = ['ptt', 'audio', 'voice', 'audio_message'];\nconst isAudio = AUDIO_TYPES.includes((msgType || '').toLowerCase());\n\nif (!text && !isAudio) {\n  return [{ json: { skip: true, reason: 'empty_message' } }];\n}\n\nreturn [{\n  json: {\n    skip: false,\n    is_lid: isLid,\n    normalized: {\n      channel: 'whatsapp',\n      phone: chatId,\n      chat_id: chatId,\n      text: text,\n      message_id: messageId,\n      timestamp: timestamp || currentTime,\n      msg_type: msgType,\n      customer_name: customerName,\n      is_audio: isAudio\n    },\n    _raw: body\n  }\n}];"
       },
       "id": "code-normalize",
       "name": "Normalizar Mensagem",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [420, 300]
+      "position": [
+        420,
+        300
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "cond-skip",
               "leftValue": "={{ $json.skip }}",
               "rightValue": false,
-              "operator": { "type": "boolean", "operation": "equals" }
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -45,7 +58,10 @@
       "name": "Mensagem Valida?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [640, 300]
+      "position": [
+        640,
+        300
+      ]
     },
     {
       "parameters": {},
@@ -53,28 +69,37 @@
       "name": "Ignorar",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [860, 460]
+      "position": [
+        860,
+        460
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// ===========================================\n// NODE 2: DEDUP + BUFFER\n// ===========================================\n\nconst data = $input.first().json;\nconst phone = data.normalized.phone;\nconst text = data.normalized.text;\nconst messageId = data.normalized.message_id;\nconst timestamp = data.normalized.timestamp;\n\nconst BUFFER_WINDOW_MS = 3000;\nconst BUFFER_KEY = `buffer_${phone}`;\nconst DEDUP_KEY = `dedup_${messageId}`;\n\nconst $static = $getWorkflowStaticData('global');\n\nif ($static[DEDUP_KEY]) {\n  return [{ json: { skip: true, reason: 'duplicate_message', messageId } }];\n}\n$static[DEDUP_KEY] = Date.now();\n\nObject.keys($static).forEach(key => {\n  if (key.startsWith('dedup_') && Date.now() - $static[key] > 300000) {\n    delete $static[key];\n  }\n});\n\nif (!$static[BUFFER_KEY]) {\n  $static[BUFFER_KEY] = {\n    messages: [],\n    first_timestamp: Date.now(),\n    last_timestamp: Date.now()\n  };\n}\n\n$static[BUFFER_KEY].messages.push({\n  text: text,\n  timestamp: timestamp,\n  message_id: messageId\n});\n$static[BUFFER_KEY].last_timestamp = Date.now();\n\nreturn [{\n  json: {\n    ...data,\n    buffer: {\n      phone: phone,\n      messages_count: $static[BUFFER_KEY].messages.length,\n      first_timestamp: $static[BUFFER_KEY].first_timestamp,\n      last_timestamp: $static[BUFFER_KEY].last_timestamp,\n      window_ms: BUFFER_WINDOW_MS\n    }\n  }\n}];"
+        "jsCode": "// ===========================================\n// NODE 2: DEDUP + BUFFER\n// ===========================================\n\nconst data = $input.first().json;\nif (data.skip) {\n  return [{ json: data }];\n}\nconst phone = data.normalized.phone;\nconst text = data.normalized.text;\nconst messageId = data.normalized.message_id;\nconst timestamp = data.normalized.timestamp;\n\nconst BUFFER_WINDOW_MS = 3000;\nconst BUFFER_KEY = `buffer_${phone}`;\nconst DEDUP_KEY = `dedup_${messageId}`;\n\nconst $static = $getWorkflowStaticData('global');\n\nif ($static[DEDUP_KEY]) {\n  return [{ json: { skip: true, reason: 'duplicate_message', messageId } }];\n}\n$static[DEDUP_KEY] = Date.now();\n\nObject.keys($static).forEach(key => {\n  if (key.startsWith('dedup_') && Date.now() - $static[key] > 300000) {\n    delete $static[key];\n  }\n});\n\nif (!$static[BUFFER_KEY]) {\n  $static[BUFFER_KEY] = {\n    messages: [],\n    first_timestamp: Date.now(),\n    last_timestamp: Date.now()\n  };\n}\n\n$static[BUFFER_KEY].messages.push({\n  text: text,\n  timestamp: timestamp,\n  message_id: messageId\n});\n$static[BUFFER_KEY].last_timestamp = Date.now();\n\nreturn [{\n  json: {\n    ...data,\n    buffer: {\n      phone: phone,\n      messages_count: $static[BUFFER_KEY].messages.length,\n      first_timestamp: $static[BUFFER_KEY].first_timestamp,\n      last_timestamp: $static[BUFFER_KEY].last_timestamp,\n      window_ms: BUFFER_WINDOW_MS\n    }\n  }\n}];"
       },
       "id": "code-buffer",
       "name": "Buffer Mensagens",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [860, 260]
+      "position": [
+        860,
+        260
+      ]
     },
     {
       "parameters": {
-        "amount": 10,
+        "amount": 3,
         "unit": "seconds"
       },
       "id": "wait-buffer",
       "name": "Aguardar Buffer",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [1080, 260]
+      "position": [
+        1080,
+        260
+      ]
     },
     {
       "parameters": {
@@ -84,18 +109,28 @@
       "name": "Consolidar Buffer",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1300, 260]
+      "position": [
+        1300,
+        260
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "cond-not-skip",
               "leftValue": "={{ $json.skip }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "notEquals" }
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
             }
           ],
           "combinator": "and"
@@ -106,28 +141,41 @@
       "name": "Buffer Pronto?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1520, 260]
+      "position": [
+        1520,
+        260
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// ===========================================\n// NODE 4: ROUTER RULES-FIRST\n// ===========================================\n\nconst data = $input.first().json;\nconst text = (data.buffer?.combined_text || data.normalized.text || '').toLowerCase().trim();\nconst messagesCount = data.buffer?.messages_count || 1;\n\nconst SAFE_PATTERNS = [\n  /^[1-9]$/,\n  /^[1-9][0-9]?$/,\n  /^(sim|s|yes|y|ok|beleza|isso|confirmo|confirma|certo)$/i,\n  /^(nao|não|n|no|cancela|cancelar|desistir)$/i,\n  /^(pix|dinheiro|cartao|cartão|credito|crédito|debito|débito|cash|card)$/i,\n  /^(entrega|delivery|retirada|retirar|buscar|pickup)$/i,\n  /^r?\\$?\\s?\\d{1,3}([.,]\\d{2})?$/i,\n  /^(voltar|volta|cancelar|sair|menu|cardapio|cardápio|ajuda|help)$/i,\n  /^(oi|ola|olá|bom dia|boa tarde|boa noite|eae|eai|opa)$/i\n];\n\nconst isSafePattern = SAFE_PATTERNS.some(pattern => pattern.test(text));\n\nconst NEEDS_LLM_PATTERNS = [\n  /pizza|sabor|calabresa|mussarela|frango|queijo|portuguesa/i,\n  /rua|avenida|av\\.|numero|nº|bairro|casa|apt|apto|apartamento/i,\n  /^[a-záéíóúàâêôãõç\\s]+\\s+\\d{2,5}/i,\n  /sem\\s|tirar\\s|adicionar|extra|com\\s/i,\n  /\\s\\/\\s/,\n  /tbm|tb|tmb|tbem|também|outra|mais uma/i,\n  /meio|metade|meia|1\\/2/i\n];\n\nconst needsLLM = !isSafePattern && (\n  messagesCount > 1 || \n  NEEDS_LLM_PATTERNS.some(pattern => pattern.test(text)) ||\n  text.split(' ').length > 3\n);\n\nlet reason = 'safe_pattern';\nif (needsLLM) {\n  if (messagesCount > 1) reason = 'multi_message';\n  else if (/rua|avenida|bairro|\\d{4,5}/i.test(text)) reason = 'address_freeform';\n  else if (/pizza|sabor|calabresa|queijo/i.test(text)) reason = 'order_text';\n  else reason = 'human_text';\n}\n\nreturn [{\n  json: {\n    ...data,\n    routing: {\n      used_llm: needsLLM,\n      reason: reason,\n      text_analyzed: text,\n      word_count: text.split(' ').length,\n      messages_count: messagesCount\n    }\n  }\n}];"
+        "jsCode": "// ===========================================\n// NODE 4: ROUTER RULES-FIRST\n// ===========================================\n\nconst data = $input.first().json;\nconst text = (data.buffer?.combined_text || data.normalized.text || '').toLowerCase().trim();\nconst messagesCount = data.buffer?.messages_count || 1;\n\nconst SAFE_PATTERNS = [\n  /^[1-9]$/,\n  /^[1-9][0-9]?$/,\n  /^(sim|s|yes|y|ok|beleza|isso|confirmo|confirma|certo)$/i,\n  /^(nao|não|n|no|cancela|cancelar|desistir)$/i,\n  /^(pix|dinheiro|cartao|cartão|credito|crédito|debito|débito|cash|card)$/i,\n  /^(entrega|delivery|retirada|retirar|buscar|pickup)$/i,\n  /^r?\\$?\\s?\\d{1,3}([.,]\\d{2})?$/i,\n  /^(voltar|volta|cancelar|sair|menu|cardapio|cardápio|ajuda|help)$/i,\n  /^(oi|ola|olá|bom dia|boa tarde|boa noite|eae|eai|opa)$/i\n];\n\n\nfunction detectSimpleIntent(t) {\n  if (/cardápio|cardapio|menu|sabores|o que tem|ver pizza|ver o card/i.test(t)) return 'cardapio';\n  if (/horário|horario|que horas|abre|fecha|funciona|tá aberto|ta aberto|esta aberto|está aberto|vocês abrem|voces abrem/i.test(t)) return 'horario';\n  if (/onde fica|localização|localizacao|endereço da|endereco da|como chegar|fica onde/i.test(t)) return 'localizacao';\n  if (/formas de pagamento|como paga|como posso pagar|aceita pix|aceita cartão|aceita cartao|aceita dinheiro/i.test(t)) return 'pagamento_info';\n\n  const wantsOrder = /quer(o|ia) pedir|fazer pedido|quero (uma )?pizza|queria (uma )?pizza|vou pedir|pedir (uma )?pizza/i.test(t)\n    || (/pizza/i.test(t) && /quero|queria|pedir|pedido|vou/i.test(t));\n  const hasDetails = /calabresa|mussarela|frango|queijo|portuguesa|bacon|pix|dinheiro|cartao|cartão|entrega|retirada|rua|avenida|bairro|\\d{3,5}/i.test(t);\n  const hasGreeting = /\\b(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|como vai|eae|opa|beleza)\\b/i.test(t);\n\n  if (/repetir|de novo|mesmo pedido|ultimo pedido|o de sempre|igual da/i.test(t)) return 'repetir_pedido';\n  if (wantsOrder && !hasDetails) return 'saudacao_pedido';\n  if (hasGreeting && !hasDetails && t.split(/\\s+/).length <= 12) return 'saudacao';\n  return null;\n}\n\nconst isSafePattern = SAFE_PATTERNS.some(pattern => pattern.test(text));\n\nconst simpleIntent = detectSimpleIntent(text);\n\nconst NEEDS_LLM_PATTERNS = [\n  /pizza|sabor|calabresa|mussarela|frango|queijo|portuguesa/i,\n  /rua|avenida|av\\.|numero|nº|bairro|casa|apt|apto|apartamento/i,\n  /^[a-záéíóúàâêôãõç\\s]+\\s+\\d{2,5}/i,\n  /sem\\s|tirar\\s|adicionar|extra|com\\s/i,\n  /\\s\\/\\s/,\n  /tbm|tb|tmb|tbem|também|outra|mais uma/i,\n  /meio|metade|meia|1\\/2/i\n];\n\nlet needsLLM = !simpleIntent && !isSafePattern && (\n  messagesCount > 1 || \n  NEEDS_LLM_PATTERNS.some(pattern => pattern.test(text)) ||\n  text.split(' ').length > 3\n);\n\nif (!simpleIntent && data.normalized?.was_audio && text.length > 1) {\n  needsLLM = true;\n}\n\nlet reason = 'safe_pattern';\nif (simpleIntent) reason = 'simple_' + simpleIntent;\nelse if (needsLLM) {\n  if (messagesCount > 1) reason = 'multi_message';\n  else if (data.normalized?.was_audio) reason = 'audio_transcription';\n  else if (/rua|avenida|bairro|\\d{4,5}/i.test(text)) reason = 'address_freeform';\n  else if (/pizza|sabor|calabresa|queijo/i.test(text)) reason = 'order_text';\n  else reason = 'human_text';\n}\n\nreturn [{\n  json: {\n    ...data,\n    routing: {\n      used_llm: needsLLM,\n      simple_intent: simpleIntent,\n      reason: reason,\n      text_analyzed: text,\n      word_count: text.split(' ').length,\n      messages_count: messagesCount\n    }\n  }\n}];"
       },
       "id": "code-router",
       "name": "Router Rules-First",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1740, 220]
+      "position": [
+        1740,
+        220
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
           "conditions": [
             {
               "id": "cond-llm",
               "leftValue": "={{ $json.routing.used_llm }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -138,7 +186,10 @@
       "name": "Usar LLM?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1960, 220]
+      "position": [
+        1960,
+        220
+      ]
     },
     {
       "parameters": {
@@ -147,16 +198,24 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
-        "options": { "timeout": 10000 }
+        "options": {
+          "timeout": 10000
+        }
       },
       "id": "http-get-neighborhoods",
       "name": "Buscar Bairros",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2180, 100]
+      "position": [
+        2180,
+        100
+      ]
     },
     {
       "parameters": {
@@ -165,16 +224,24 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
-        "options": { "timeout": 10000 }
+        "options": {
+          "timeout": 10000
+        }
       },
       "id": "http-get-products",
       "name": "Buscar Cardapio",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2180, 240]
+      "position": [
+        2180,
+        240
+      ]
     },
     {
       "parameters": {
@@ -186,7 +253,10 @@
       "name": "Merge Contexto",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [2400, 170]
+      "position": [
+        2400,
+        170
+      ]
     },
     {
       "parameters": {
@@ -196,39 +266,60 @@
       "name": "Montar Contexto LLM",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2620, 170]
+      "position": [
+        2620,
+        170
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "url": "https://api.anthropic.com/v1/messages",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "Bearer YOUR_GROQ_API_KEY" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ANTHROPIC_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"temperature\": 0.1,\n  \"response_format\": { \"type\": \"json_object\" },\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Você é um assistente de uma pizzaria brasileira que extrai informações de mensagens de clientes. Retorne APENAS JSON válido, sem markdown.\\n\\nINFORMAÇÕES DA PIZZARIA:\\n- Só existe UM tamanho de pizza: G (Grande, 8 pedaços)\\n- NÃO existe pizza P, M, média, pequena, família, broto, etc\\n- PROMOÇÃO: 2 pizzas por R$55 (cliente pode pedir várias promoções)\\n\\nREGRAS:\\n1. NÃO invente dados - se não conseguir identificar, deixe null ou string vazia\\n2. Para endereços, extraia as partes mas NÃO decida o bairro canônico\\n3. Para pedidos, extraia sabores mas NÃO assuma meio-a-meio sem indicação clara\\n4. Trate 'sem X', 'tirar X' como modifier type=remove\\n5. Trate 'tbm', 'também', 'e a outra' como indicação de item adicional\\n6. Se detectar 2 sabores juntos (ex: 'calabresa e queijo'), marque ambiguous=true\\n7. Números sozinhos geralmente são seleção de menu, não quantidade\\n8. Se cliente mencionar tamanho diferente de G (ex: média, pequena, família), extraia em size_requested para informar que não existe\\n9. Se cliente mencionar 'promoção', '2 por 55', 'combo', marque is_promo=true\\n10. Se pedir múltiplas pizzas (4, 6, etc) com promoção, agrupe em pares para promo_pairs\\n\\nSCHEMA DE SAÍDA (siga exatamente):\\n{\\n  \\\"intent\\\": \\\"provide_address|choose_delivery_type|choose_payment|provide_change|add_item|order_build|confirm|deny|greeting|menu_request|other\\\",\\n  \\\"entities\\\": {\\n    \\\"delivery_type\\\": \\\"delivery|pickup|unknown\\\",\\n    \\\"payment_method\\\": \\\"pix|cash|credit|debit|unknown\\\",\\n    \\\"change_for\\\": null,\\n    \\\"address\\\": {\\n      \\\"address_line\\\": \\\"\\\",\\n      \\\"neighborhood_text\\\": \\\"\\\",\\n      \\\"number\\\": \\\"\\\",\\n      \\\"complement\\\": \\\"\\\",\\n      \\\"reference\\\": \\\"\\\"\\n    },\\n    \\\"order\\\": {\\n      \\\"items\\\": [{\\\"name\\\": \\\"\\\", \\\"quantity\\\": 1, \\\"size_requested\\\": null, \\\"modifiers\\\": [], \\\"notes\\\": \\\"\\\"}],\\n      \\\"is_half_half\\\": false,\\n      \\\"is_promo\\\": false,\\n      \\\"promo_pairs\\\": [],\\n      \\\"invalid_size\\\": false,\\n      \\\"ambiguous\\\": false,\\n      \\\"ambiguity_reason\\\": \\\"\\\"\\n    }\\n  },\\n  \\\"missing_fields\\\": [],\\n  \\\"suggested_questions\\\": [],\\n  \\\"confidence\\\": 0.0\\n}\\n\\nEXEMPLOS:\\n1. 'quero uma pizza média de calabresa' -> items: [{name:'calabresa', size_requested:'media'}], invalid_size:true\\n2. 'quero 4 pizzas da promoção: calabresa, bacon, portuguesa e 4 queijos' -> is_promo:true, promo_pairs:[[calabresa,bacon],[portuguesa,4 queijos]]\\n3. 'duas calabresa e uma bacon da promo' -> is_promo:true, items:[{name:'calabresa',qty:2},{name:'bacon',qty:1}]\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"BAIRROS CADASTRADOS: {{ $json.llm_context.neighborhoods }}\\n\\nCARDÁPIO: {{ $json.llm_context.products }}\\n\\nMENSAGEM DO CLIENTE: \\\"{{ $json.llm_context.text }}\\\"\"\n    }\n  ]\n}",
-        "options": { "timeout": 15000 }
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5\",\n  \"max_tokens\": 2048,\n  \"temperature\": 0.1,\n  \"system\": \"Você é um assistente de uma pizzaria brasileira que extrai informações de mensagens de clientes. Retorne APENAS JSON válido, sem markdown.\\n\\nINFORMAÇÕES DA PIZZARIA:\\n- Só existe UM tamanho de pizza: G (Grande, 8 pedaços)\\n- NÃO existe pizza P, M, média, pequena, família, broto, etc\\n- PROMOÇÃO: 2 pizzas por R$55 (cliente pode pedir várias promoções)\\n\\nREGRAS:\\n1. NÃO invente dados - se não conseguir identificar, deixe null ou string vazia\\n2. Para endereços, extraia as partes mas NÃO decida o bairro canônico\\n3. Para pedidos, extraia sabores mas NÃO assuma meio-a-meio sem indicação clara\\n4. Trate 'sem X', 'tirar X' como modifier type=remove\\n5. Trate 'tbm', 'também', 'e a outra' como indicação de item adicional\\n6. Se detectar 2 sabores juntos (ex: 'calabresa e queijo'), marque ambiguous=true\\n7. Números sozinhos geralmente são seleção de menu, não quantidade\\n8. Se cliente mencionar tamanho diferente de G (ex: média, pequena, família), extraia em size_requested para informar que não existe\\n9. Se cliente mencionar 'promoção', '2 por 55', 'combo', marque is_promo=true\\n\\n11. Aceite erros de digitação e linguagem oral (klabresa, qro, duas de calabresa)\\n12. Áudio transcrito pode ter palavras imprecisas — use o cardápio como referência\\\\n\\n14. Meio a meio: 'com metade de', 'meio X meio Y' → is_half_half=true, half_flavors=[sabor1,sabor2]. 'e outra' = pizza separada (novo item). Ex: 'calabresa com metade frango e outra queijo com bolonhesa' → 2 items meio a meio\\n13. Saudação + conversa + pedido vago (ex: oi tudo bem queria pizza) → intent greeting, items vazios — NÃO invente sabor\\n10. Se pedir múltiplas pizzas (4, 6, etc) com promoção, agrupe em pares para promo_pairs\\n\\nSCHEMA DE SAÍDA (siga exatamente):\\n{\\n  \\\"intent\\\": \\\"provide_address|choose_delivery_type|choose_payment|provide_change|add_item|order_build|confirm|deny|greeting|menu_request|other\\\",\\n  \\\"entities\\\": {\\n    \\\"delivery_type\\\": \\\"delivery|pickup|unknown\\\",\\n    \\\"payment_method\\\": \\\"pix|cash|credit|debit|unknown\\\",\\n    \\\"change_for\\\": null,\\n    \\\"address\\\": {\\n      \\\"address_line\\\": \\\"\\\",\\n      \\\"neighborhood_text\\\": \\\"\\\",\\n      \\\"number\\\": \\\"\\\",\\n      \\\"complement\\\": \\\"\\\",\\n      \\\"reference\\\": \\\"\\\"\\n    },\\n    \\\"order\\\": {\\n      \\\"items\\\": [{\\\"name\\\": \\\"\\\", \\\"quantity\\\": 1, \\\"size_requested\\\": null, \\\"modifiers\\\": [], \\\"notes\\\": \\\"\\\"}],\\n      \\\"is_half_half\\\": false,\\n      \\\"half_flavors\\\": [],\\n      \\\"is_promo\\\": false,\\n      \\\"promo_pairs\\\": [],\\n      \\\"invalid_size\\\": false,\\n      \\\"ambiguous\\\": false,\\n      \\\"ambiguity_reason\\\": \\\"\\\"\\n    }\\n  },\\n  \\\"missing_fields\\\": [],\\n  \\\"suggested_questions\\\": [],\\n  \\\"confidence\\\": 0.0\\n}\\n\\nEXEMPLOS:\\n1. 'quero uma pizza média de calabresa' -> items: [{name:'calabresa', size_requested:'media'}], invalid_size:true\\n2. 'quero 4 pizzas da promoção: calabresa, bacon, portuguesa e 4 queijos' -> is_promo:true, promo_pairs:[[calabresa,bacon],[portuguesa,4 queijos]]\\n3. 'duas calabresa e uma bacon da promo' -> is_promo:true, items:[{name:'calabresa',qty:2},{name:'bacon',qty:1}]\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"BAIRROS CADASTRADOS: {{ $json.llm_context.neighborhoods }}\\n\\nCARDÁPIO: {{ $json.llm_context.products }}\\n\\nMENSAGEM DO CLIENTE: \\\"{{ $json.llm_context.text }}\\\"\"\n    }\n  ]\n}",
+        "options": {
+          "timeout": 15000
+        }
       },
-      "id": "http-llm-groq",
-      "name": "Chamar Groq",
+      "id": "http-llm-anthropic",
+      "name": "Chamar Claude Haiku",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2840, 170]
+      "position": [
+        2840,
+        170
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// ===========================================\n// NODE 6: PARSE E VALIDAR RESPOSTA LLM\n// ===========================================\n\nconst contextData = $('Montar Contexto LLM').first().json;\nconst llmResponse = $input.first().json;\n\nlet parsed = null;\nlet validationError = null;\nlet valid = false;\n\ntry {\n  const content = llmResponse.choices?.[0]?.message?.content || '';\n  \n  let jsonStr = content.trim();\n  if (jsonStr.startsWith('```json')) {\n    jsonStr = jsonStr.replace(/```json\\n?/, '').replace(/\\n?```$/, '');\n  } else if (jsonStr.startsWith('```')) {\n    jsonStr = jsonStr.replace(/```\\n?/, '').replace(/\\n?```$/, '');\n  }\n  \n  parsed = JSON.parse(jsonStr);\n  \n  if (!parsed.intent) {\n    validationError = 'missing_intent';\n  } else if (!parsed.entities) {\n    validationError = 'missing_entities';\n  } else if (typeof parsed.confidence !== 'number') {\n    parsed.confidence = 0.5;\n  }\n  \n  if (!validationError) {\n    valid = true;\n    parsed.raw_text = contextData.llm_context.text;\n  }\n  \n} catch (e) {\n  validationError = `json_parse_error: ${e.message}`;\n  parsed = null;\n}\n\nreturn [{\n  json: {\n    ...contextData,\n    llm: {\n      provider: 'groq',\n      model: 'llama-3.3-70b-versatile',\n      valid: valid,\n      validation_error: validationError,\n      result: parsed,\n      raw_response: llmResponse\n    }\n  }\n}];"
+        "jsCode": "// ===========================================\n// NODE 6: PARSE E VALIDAR RESPOSTA LLM\n// ===========================================\n\nconst contextData = $('Montar Contexto LLM').first().json;\nconst llmResponse = $input.first().json;\n\nlet parsed = null;\nlet validationError = null;\nlet valid = false;\n\ntry {\nconst content =\n    llmResponse.content?.[0]?.text ||\n    llmResponse.choices?.[0]?.message?.content ||\n    '';\n  \n  let jsonStr = content.trim();\n  if (jsonStr.startsWith('```json')) {\n    jsonStr = jsonStr.replace(/```json\\n?/, '').replace(/\\n?```$/, '');\n  } else if (jsonStr.startsWith('```')) {\n    jsonStr = jsonStr.replace(/```\\n?/, '').replace(/\\n?```$/, '');\n  }\n  \n  parsed = JSON.parse(jsonStr);\n  \n  if (!parsed.intent) {\n    validationError = 'missing_intent';\n  } else if (!parsed.entities) {\n    validationError = 'missing_entities';\n  } else if (typeof parsed.confidence !== 'number') {\n    parsed.confidence = 0.5;\n  }\n  \n  if (!validationError) {\n    valid = true;\n    parsed.raw_text = contextData.llm_context.text;\n  }\n  \n} catch (e) {\n  validationError = `json_parse_error: ${e.message}`;\n  parsed = null;\n}\n\nreturn [{\n  json: {\n    ...contextData,\n    llm: {\n      provider: 'anthropic',\n      model: 'claude-haiku-4-5',\n      valid: valid,\n      validation_error: validationError,\n      result: parsed,\n      raw_response: llmResponse\n    }\n  }\n}];"
       },
       "id": "code-parse-llm",
       "name": "Parse LLM Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3060, 170]
+      "position": [
+        3060,
+        170
+      ]
     },
     {
       "parameters": {
@@ -238,27 +329,36 @@
       "name": "Match Bairro Fuzzy",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3280, 170]
+      "position": [
+        3280,
+        170
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// ===========================================\n// NODE 8: MONTAR ENVELOPE FINAL (COM LLM)\n// ===========================================\n\nconst data = $input.first().json;\n\nconst envelope = {\n  source: 'n8n',\n  normalized: data.normalized,\n  buffer: {\n    combined_text: data.buffer?.combined_text || data.normalized.text,\n    messages_count: data.buffer?.messages_count || 1,\n    window_seconds: data.buffer?.window_seconds || 10,\n    texts: data.buffer?.texts || [data.normalized.text]\n  },\n  routing: data.routing,\n  llm: {\n    provider: data.llm?.provider || null,\n    model: data.llm?.model || null,\n    valid: data.llm?.valid || false,\n    validation_error: data.llm?.validation_error || null,\n    result: data.llm?.result || null\n  },\n  address_resolution: data.address_resolution || {\n    neighborhood_input: null,\n    matched_neighborhood: null,\n    match_score: 0,\n    delivery_fee: null,\n    candidates: [],\n    status: 'not_applicable'\n  }\n};\n\nreturn [{ json: envelope }];"
+        "jsCode": "// ===========================================\n// NODE 8: MONTAR ENVELOPE FINAL (COM LLM)\n// ===========================================\n\nconst data = $input.first().json;\n\nconst envelope = {\n  source: 'n8n',\n  normalized: data.normalized,\n  buffer: {\n    combined_text: data.buffer?.combined_text || data.normalized.text,\n    messages_count: data.buffer?.messages_count || 1,\n    window_seconds: data.buffer?.window_seconds || 10,\n    texts: data.buffer?.texts || [data.normalized.text]\n  },\n  routing: data.routing,\n  llm: {\n    provider: data.llm?.provider || null,\n    model: data.llm?.model || null,\n    valid: data.llm?.valid || false,\n    validation_error: data.llm?.validation_error || null,\n    result: data.llm?.result || null\n  },\n  transcription: data.transcription || null,\n  address_resolution: data.address_resolution || {\n    neighborhood_input: null,\n    matched_neighborhood: null,\n    match_score: 0,\n    delivery_fee: null,\n    candidates: [],\n    status: 'not_applicable'\n  }\n};\n\nreturn [{ json: envelope }];"
       },
       "id": "code-envelope-llm",
       "name": "Montar Envelope (LLM)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3500, 170]
+      "position": [
+        3500,
+        170
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// ===========================================\n// NODE 8B: MONTAR ENVELOPE FINAL (SEM LLM)\n// ===========================================\n\nconst data = $input.first().json;\n\nconst envelope = {\n  source: 'n8n',\n  normalized: data.normalized,\n  buffer: {\n    combined_text: data.buffer?.combined_text || data.normalized.text,\n    messages_count: data.buffer?.messages_count || 1,\n    window_seconds: data.buffer?.window_seconds || 10,\n    texts: data.buffer?.texts || [data.normalized.text]\n  },\n  routing: {\n    used_llm: false,\n    reason: data.routing?.reason || 'safe_pattern'\n  },\n  llm: null,\n  address_resolution: null\n};\n\nreturn [{ json: envelope }];"
+        "jsCode": "// ===========================================\n// NODE 8B: MONTAR ENVELOPE FINAL (SEM LLM)\n// ===========================================\n\nconst data = $input.first().json;\n\nconst envelope = {\n  source: 'n8n',\n  normalized: data.normalized,\n  buffer: {\n    combined_text: data.buffer?.combined_text || data.normalized.text,\n    messages_count: data.buffer?.messages_count || 1,\n    window_seconds: data.buffer?.window_seconds || 10,\n    texts: data.buffer?.texts || [data.normalized.text]\n  },\n  routing: {\n    used_llm: false,\n    reason: data.routing?.reason || 'safe_pattern'\n  },\n  llm: null,\n  transcription: data.transcription || null,\n  address_resolution: null\n};\n\nreturn [{ json: envelope }];"
       },
       "id": "code-envelope-no-llm",
       "name": "Montar Envelope (No LLM)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2180, 380]
+      "position": [
+        2180,
+        380
+      ]
     },
     {
       "parameters": {
@@ -267,19 +367,27 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": { "timeout": 30000 }
+        "options": {
+          "timeout": 30000
+        }
       },
       "id": "http-django-llm",
       "name": "Enviar Django (LLM)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3720, 170]
+      "position": [
+        3720,
+        170
+      ]
     },
     {
       "parameters": {
@@ -288,19 +396,27 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
-        "options": { "timeout": 30000 }
+        "options": {
+          "timeout": 30000
+        }
       },
       "id": "http-django-no-llm",
       "name": "Enviar Django (No LLM)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2400, 380]
+      "position": [
+        2400,
+        380
+      ]
     },
     {
       "parameters": {},
@@ -308,75 +424,260 @@
       "name": "Aguardando Buffer",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1740, 380]
+      "position": [
+        1740,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// TRANSCRIÇÃO DE ÁUDIO (Groq Whisper)\nconst data = $input.first().json;\nconst AUDIO_TYPES = ['ptt', 'audio', 'voice', 'audio_message'];\nconst msgType = (data.normalized?.msg_type || '').toLowerCase();\nconst isAudio = data.normalized?.is_audio || AUDIO_TYPES.includes(msgType);\n\nif (!isAudio) {\n  return [{ json: data }];\n}\n\nconst GROQ_API_KEY = $env.GROQ_API_KEY;\nconst WAHA_URL = ($env.WAHA_URL || 'http://waha:3000').replace(/\\/$/, '');\nconst WAHA_API_KEY = $env.WAHA_API_KEY || '';\nconst WAHA_SESSION = $env.WAHA_SESSION || 'default';\nconst chatId = data.normalized.chat_id;\nconst messageId = data.normalized.message_id;\nconst payload = data._raw?.payload || {};\nconst wahaHeaders = { 'Content-Type': 'application/json', 'X-Api-Key': WAHA_API_KEY };\n\ntry {\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${WAHA_URL}/api/sendText`,\n    headers: wahaHeaders,\n    body: { session: WAHA_SESSION, chatId, text: 'Recebi seu áudio! Só um instante 🎧' },\n    json: true,\n  });\n} catch (e) {}\n\nfunction fixMediaUrl(url) {\n  if (!url) return url;\n  return url.replace('http://localhost:3000', WAHA_URL).replace('http://127.0.0.1:3000', WAHA_URL).replace('http://waha:3000', WAHA_URL);\n}\n\nlet audioBuffer = null;\nfor (const candidate of [payload.media?.url, payload.mediaUrl, payload._data?.media?.url, payload.media?.link]) {\n  if (!candidate || audioBuffer) continue;\n  try {\n    audioBuffer = await this.helpers.httpRequest({\n      method: 'GET', url: fixMediaUrl(candidate), headers: { 'X-Api-Key': WAHA_API_KEY }, encoding: 'arraybuffer',\n    });\n  } catch (e) {}\n}\n\nif (!audioBuffer) {\n  for (const url of [\n    `${WAHA_URL}/api/${WAHA_SESSION}/messages/${messageId}/download`,\n    `${WAHA_URL}/api/${WAHA_SESSION}/chats/${encodeURIComponent(chatId)}/messages/${messageId}?download=true`,\n  ]) {\n    try {\n      audioBuffer = await this.helpers.httpRequest({\n        method: 'GET', url, headers: { 'X-Api-Key': WAHA_API_KEY }, encoding: 'arraybuffer',\n      });\n      if (audioBuffer) break;\n    } catch (e) {}\n  }\n}\n\nlet transcript = '';\nlet transcriptionError = null;\n\nif (!GROQ_API_KEY || GROQ_API_KEY.startsWith('your_')) {\n  transcriptionError = 'GROQ_API_KEY_missing';\n} else if (!audioBuffer) {\n  transcriptionError = 'audio_download_failed';\n} else {\n  try {\n    const FormData = require('form-data');\n    const form = new FormData();\n    form.append('file', Buffer.from(audioBuffer), { filename: 'audio.ogg', contentType: 'audio/ogg' });\n    form.append('model', 'whisper-large-v3-turbo');\n    form.append('language', 'pt');\n    form.append('response_format', 'json');\n    form.append('temperature', '0');\n    const whisperResponse = await this.helpers.httpRequest({\n      method: 'POST',\n      url: 'https://api.groq.com/openai/v1/audio/transcriptions',\n      headers: { Authorization: `Bearer ${GROQ_API_KEY}`, ...form.getHeaders() },\n      body: form,\n    });\n    transcript = (whisperResponse.text || '').trim();\n    if (!transcript) transcriptionError = 'empty_transcription';\n  } catch (e) {\n    transcriptionError = e.message || 'whisper_error';\n  }\n}\n\nif (!transcript) {\n  try {\n    await this.helpers.httpRequest({\n      method: 'POST',\n      url: `${WAHA_URL}/api/sendText`,\n      headers: wahaHeaders,\n      body: {\n        session: WAHA_SESSION,\n        chatId,\n        text: 'Não consegui entender o áudio 😅\\n\\nTenta de novo ou escreve: \"2 calabresa entrega aponia\"',\n      },\n      json: true,\n    });\n  } catch (e) {}\n  return [{ json: { skip: true, reason: transcriptionError || 'transcription_failed' } }];\n}\n\nreturn [{\n  json: {\n    ...data,\n    normalized: {\n      ...data.normalized,\n      text: transcript,\n      msg_type: 'chat',\n      was_audio: true,\n      original_msg_type: msgType,\n    },\n    transcription: {\n      provider: 'groq',\n      model: 'whisper-large-v3-turbo',\n      text: transcript,\n      success: true,\n    },\n  },\n}];"
+      },
+      "id": "code-audio-stt",
+      "name": "Processar Audio STT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        260
+      ]
     }
   ],
   "connections": {
     "WAHA Webhook": {
-      "main": [[{ "node": "Normalizar Mensagem", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Normalizar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Normalizar Mensagem": {
-      "main": [[{ "node": "Mensagem Valida?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Mensagem Valida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Mensagem Valida?": {
       "main": [
-        [{ "node": "Buffer Mensagens", "type": "main", "index": 0 }],
-        [{ "node": "Ignorar", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Processar Audio STT",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignorar",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Buffer Mensagens": {
-      "main": [[{ "node": "Aguardar Buffer", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Aguardar Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Aguardar Buffer": {
-      "main": [[{ "node": "Consolidar Buffer", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Consolidar Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Consolidar Buffer": {
-      "main": [[{ "node": "Buffer Pronto?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Buffer Pronto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Buffer Pronto?": {
       "main": [
-        [{ "node": "Router Rules-First", "type": "main", "index": 0 }],
-        [{ "node": "Aguardando Buffer", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Router Rules-First",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aguardando Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Router Rules-First": {
-      "main": [[{ "node": "Usar LLM?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Usar LLM?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Usar LLM?": {
       "main": [
         [
-          { "node": "Buscar Bairros", "type": "main", "index": 0 },
-          { "node": "Buscar Cardapio", "type": "main", "index": 0 }
+          {
+            "node": "Buscar Bairros",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Buscar Cardapio",
+            "type": "main",
+            "index": 0
+          }
         ],
-        [{ "node": "Montar Envelope (No LLM)", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Montar Envelope (No LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Buscar Bairros": {
-      "main": [[{ "node": "Merge Contexto", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Merge Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Buscar Cardapio": {
-      "main": [[{ "node": "Merge Contexto", "type": "main", "index": 1 }]]
+      "main": [
+        [
+          {
+            "node": "Merge Contexto",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
     },
     "Merge Contexto": {
-      "main": [[{ "node": "Montar Contexto LLM", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Montar Contexto LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Montar Contexto LLM": {
-      "main": [[{ "node": "Chamar Groq", "type": "main", "index": 0 }]]
-    },
-    "Chamar Groq": {
-      "main": [[{ "node": "Parse LLM Response", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Chamar Claude Haiku",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Parse LLM Response": {
-      "main": [[{ "node": "Match Bairro Fuzzy", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Match Bairro Fuzzy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Match Bairro Fuzzy": {
-      "main": [[{ "node": "Montar Envelope (LLM)", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Montar Envelope (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Montar Envelope (LLM)": {
-      "main": [[{ "node": "Enviar Django (LLM)", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Enviar Django (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Montar Envelope (No LLM)": {
-      "main": [[{ "node": "Enviar Django (No LLM)", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Enviar Django (No LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Audio STT": {
+      "main": [
+        [
+          {
+            "node": "Buffer Mensagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chamar Claude Haiku": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},

@@ -4,31 +4,43 @@
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `n8n_workflow_hybrid_bot.json` | Workflow n8n completo (importar) |
-| `pizzaria/bot_views.py` | Atualizado para processar envelope n8n |
-| `pizzaria/views.py` | Novos endpoints `/api/n8n/neighborhoods/` e `/api/n8n/products/` |
+| `n8n_workflow_hybrid_bot.json` | Workflow n8n completo (importar) — **STT + LLM** |
+| `pizzaria/bot_views.py` | Bot conversacional, confirmação de pedido, áudio |
+| `pizzaria/audio_service.py` | Transcrição Groq Whisper (fallback Django) |
+| `pizzaria/conversational_helpers.py` | Welcome, ajuda, rascunho, detector de confusão |
+| `pizzaria/views.py` | Endpoints `/api/n8n/neighborhoods/` e `/api/n8n/products/` |
 | `pizzaria/urls.py` | Rotas para os novos endpoints |
+| `ATENDIMENTO_CONVERSACIONAL.md` | Documentação do atendimento conversacional |
 
 ## Arquitetura
 
 ```
-WAHA → Webhook → Normalizar → Buffer → Router → [LLM?] → Django
+WAHA → Webhook → Normalizar → [Áudio? STT Whisper] → Buffer (3s) → Router → [LLM?] → Django
                                           │
-                                          ├─ SIM: Buscar Bairros + Cardápio → Groq (Llama 3.1) → Parse → Match Bairro → Envelope → Django
+                                          ├─ SIM: Bairros + Cardápio → Claude Haiku → Match Bairro → Envelope → Django
                                           │
                                           └─ NÃO: Envelope simples → Django
 ```
 
 ## Variáveis de Ambiente
 
-Configure no n8n (Settings > Environment Variables):
+Configure no n8n (Settings > Environment Variables ou docker-compose):
 
 ```bash
-# API Groq (obrigatório) - GRÁTIS!
+# Anthropic (obrigatório) — LLM Claude Haiku
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+ANTHROPIC_LLM_MODEL=claude-haiku-4-5
+
+# Groq (obrigatório) — Whisper STT para áudio
 GROQ_API_KEY=gsk_xxxxx
 
-# Redis (opcional - para buffer mais robusto)
-# REDIS_URL=redis://redis:6379/0
+# WAHA (obrigatório para transcrição de áudio)
+WAHA_URL=http://waha:3000
+WAHA_API_KEY=sua-api-key
+WAHA_SESSION=default
+
+# Backend (opcional — URLs nos nodes HTTP)
+BACKEND_URL=http://web:8000
 ```
 
 ## Endpoints Django Necessários
@@ -80,8 +92,8 @@ O Django precisa processar o novo envelope:
     "reason": "multi_message"
   },
   "llm": {
-    "provider": "groq",
-    "model": "llama-3.1-70b-versatile",
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5",
     "valid": true,
     "validation_error": null,
     "result": { ... }
@@ -163,6 +175,24 @@ Mensagem: "100"
 Esperado: routing.used_llm = false (é número simples)
 ```
 
+### 6. Áudio (STT)
+
+Envie um áudio: *"quero duas calabresa entrega aponia"*
+
+Esperado:
+- Resposta imediata: "Recebi seu áudio! Só um instante 🎧"
+- `transcription.success = true` no envelope
+- `routing.reason = "audio_transcription"`
+- Bot anota o pedido ou pede confirmação
+
+### 7. Pedido completo (confirmação)
+
+Mensagem: *"2 calabresa henrique soares 6225 aponia pix"*
+
+Esperado:
+- Resumo do pedido + "Tá certo? Responde SIM"
+- Estado Django: `awaiting_draft_confirmation`
+
 ## Regras do Router
 
 ### Padrões SAFE (não usa LLM):
@@ -177,6 +207,7 @@ Esperado: routing.used_llm = false (é número simples)
 
 ### Padrões que USAM LLM:
 
+- **Áudio transcrito** (sempre)
 - Múltiplas mensagens (buffer > 1)
 - Texto com sabores de pizza
 - Endereços (rua, número, bairro)
@@ -218,20 +249,31 @@ Após testar, desative o workflow `n8n_workflow_pizzaria.json` para evitar dupli
 
 ## Troubleshooting
 
-### Erro "GROQ_API_KEY not found"
+### Erro "ANTHROPIC_API_KEY not found"
 
 Configure a variável de ambiente no n8n:
-- Settings > Environment Variables
-- Adicione `GROQ_API_KEY`
+- Settings > Environment Variables (ou `.env` + docker-compose)
+- Adicione `ANTHROPIC_API_KEY`
 
-Para obter a key (grátis):
-1. Acesse https://console.groq.com
-2. Crie uma conta
-3. Vá em API Keys > Create API Key
+Para obter a key:
+1. Acesse https://console.anthropic.com/settings/keys
+2. Crie uma API key
+
+### Erro "GROQ_API_KEY not found" (áudio)
+
+Para transcrição Whisper, ainda é necessário Groq:
+- Adicione `GROQ_API_KEY` no n8n
+- Obtenha em https://console.groq.com → API Keys
 
 ### Buffer não funciona
 
-O buffer usa `staticData` do n8n (em memória). Para produção com múltiplas instâncias, substitua pelo Redis node.
+O buffer usa `staticData` do n8n (em memória). Janela atual: **3 segundos**. Para produção com múltiplas instâncias, substitua pelo Redis node.
+
+### Áudio não transcreve
+
+- Verifique `GROQ_API_KEY`, `WAHA_URL` e `WAHA_API_KEY` no n8n
+- Confirme que o node `Processar Audio STT` está no fluxo (entre "Mensagem Valida?" e "Buffer Mensagens")
+- Veja [ATENDIMENTO_CONVERSACIONAL.md](ATENDIMENTO_CONVERSACIONAL.md)
 
 ### LLM retorna JSON inválido
 

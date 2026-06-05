@@ -31,8 +31,12 @@ docker-compose up --build -d
 1. Acesse: http://localhost:5678
 2. Login: `admin` / `admin123`
 3. Clique em "Import workflow"
-4. Selecione o arquivo `n8n_workflow_pizzaria.json`
-5. Ative o workflow (toggle no canto superior direito)
+4. Selecione o arquivo **`n8n_workflow_hybrid_bot.json`** (recomendado — áudio + LLM)
+5. Configure `ANTHROPIC_API_KEY` (LLM) e `GROQ_API_KEY` (áudio) no `.env` ou nas variáveis do container n8n
+6. Ative o workflow (toggle no canto superior direito)
+7. **Desative** o workflow antigo `n8n_workflow_pizzaria.json` se existir
+
+> Documentação completa do atendimento conversacional: [ATENDIMENTO_CONVERSACIONAL.md](ATENDIMENTO_CONVERSACIONAL.md)
 
 ### 3. Configurar o WAHA (WhatsApp)
 
@@ -102,9 +106,9 @@ Enviar ao Django --> Responder OK
 2. Exemplos de mensagens:
    - "Boa noite, quero uma pizza"
    - "calabresa"
-   - "1" (selecionar bebida)
-   - "Rua das Flores, 123 - Centro"
+   - **Áudio:** "duas calabresa entrega aponia pix"
    - [Enviar imagem do comprovante]
+3. Digite `ajuda` para ver como funciona o atendimento
 
 ## Logs
 

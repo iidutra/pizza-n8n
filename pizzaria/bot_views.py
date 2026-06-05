@@ -15,7 +15,41 @@ import requests
 import base64
 
 from .models import Customer, Product, DeliveryFee, Order, OrderItem, BusinessSettings
-from .waha_service import send_whatsapp_message, send_whatsapp_image, WAHA_URL, WAHA_SESSION
+from .waha_service import send_whatsapp_message, send_whatsapp_image, send_whatsapp_buttons, WAHA_URL, WAHA_SESSION
+from .audio_service import transcribe_waha_payload
+from .conversational_helpers import (
+    build_draft_summary,
+    detect_simple_intent,
+    entities_to_draft,
+    get_audio_ack_message,
+    get_audio_failed_message,
+    get_conversational_welcome,
+    get_help_message,
+    get_no_previous_order_message,
+    get_simple_intent_message,
+    get_simplify_message,
+    has_order_details,
+    increment_confusion_count,
+    is_confirmation,
+    is_denial,
+    is_help_request,
+    normalize_text,
+    reset_confusion_count,
+    save_draft_state,
+    should_simplify_response,
+    wants_to_order_vague,
+)
+from .order_coverage import (
+    build_partial_progress_message,
+    build_repeat_order_message,
+    entities_to_partial_draft,
+    fill_partial_field,
+    get_last_order_for_customer,
+    get_missing_fields,
+    get_question_for_field,
+    order_to_draft,
+    partial_to_complete_draft,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -221,16 +255,18 @@ def is_change_of_mind(text: str) -> tuple:
 def get_context_help(state: str) -> str:
     """Retorna ajuda contextual baseada no estado atual."""
     help_messages = {
-        'awaiting_promo_pizza_1': "Você está escolhendo a *primeira pizza* da promoção.\n\nDigite o número ou nome do sabor, ou 'voltar' para cancelar.",
-        'awaiting_promo_pizza_2': "Você está escolhendo a *segunda pizza* da promoção.\n\nDigite o número ou nome do sabor, ou 'voltar'.",
-        'awaiting_half_half_first': "Você está montando uma pizza *meio a meio*.\n\nDigite o primeiro sabor, ou 'voltar'.",
-        'awaiting_half_half_second': "Você está escolhendo o *segundo sabor* da meio a meio.\n\nDigite o sabor, ou 'voltar'.",
-        'awaiting_more_items': "Você pode adicionar mais pizzas ou finalizar.\n\n1️⃣ Quero mais\n2️⃣ Só isso",
-        'awaiting_address': "Preciso do *endereço completo* para entrega.\n\nEx: Rua das Flores, 123, Centro",
-        'awaiting_payment': "Escolha a *forma de pagamento*:\n\n1️⃣ PIX\n2️⃣ Cartão\n3️⃣ Dinheiro",
-        'awaiting_observation': "Alguma *observação* no pedido?\n\nDigite a observação ou 'não' se não tiver.",
+        'awaiting_promo_pizza_1': "Fala o sabor da *primeira* pizza da promo.",
+        'awaiting_promo_pizza_2': "Fala o sabor da *segunda* pizza da promo.",
+        'awaiting_half_half_first': "Fala o *primeiro* sabor da meio a meio.",
+        'awaiting_half_half_second': "Fala o *segundo* sabor da meio a meio.",
+        'awaiting_more_items': "Quer mais pizza? Fala *sim* ou *só isso*.",
+        'awaiting_address': "Me manda o endereço: rua, número e bairro.",
+        'awaiting_payment_choice': "Como vai pagar? PIX, dinheiro ou cartão?",
+        'awaiting_observation': "Quer tirar alguma coisa da pizza? Fala ou digite *não*.",
+        'awaiting_draft_confirmation': "Responde *SIM* se o pedido está certo, ou manda o que mudar.",
+        'awaiting_receipt': "Manda a *foto* do comprovante PIX 📸",
     }
-    return help_messages.get(state, "Digite 'cardápio' para ver opções ou 'cancelar' para recomeçar.")
+    return help_messages.get(state, "Manda seu pedido por áudio ou texto. Digite *ajuda* se precisar.")
 
 
 def handle_humanized_input(phone: str, text: str, current_state: str) -> str:
@@ -504,6 +540,9 @@ def find_product_fuzzy(text: str) -> Product:
         ("bauru", "bauru"),
         ("portuguesa", "portuguesa"),
         ("4 queijos", "4 queijos"), ("quatro queijos", "4 queijos"), ("queijos", "4 queijos"),
+        ("queijo", "4 queijos"),
+        ("frango", "frango com catupiry"),
+        ("bolonhesa", "portuguesa"), ("bolonheza", "portuguesa"),
         ("marguerita", "marguerita"), ("margerita", "marguerita"),
         ("pepperoni", "pepperoni"), ("peperoni", "pepperoni"),
         # Pizzas doces
@@ -662,6 +701,7 @@ def parse_half_half(text: str) -> tuple:
         # Limpa palavras extras
         sabor1 = re.sub(r'^(meia|meio|metade)\s+', '', sabor1)
         sabor2 = re.sub(r'^(meia|meio|metade|de)\s+', '', sabor2)
+        sabor2 = re.split(r'\s+e\s+(?:uma\s+)?outra\b', sabor2)[0].strip()
         if sabor1 and sabor2:
             return sabor1, sabor2
 
@@ -701,6 +741,137 @@ def parse_half_half(text: str) -> tuple:
                     return sabor1, sabor2
 
     return None, None
+
+
+def _clean_half_sabor(text: str) -> str:
+    s = (text or '').strip()
+    s = re.sub(r'^\d+\s*', '', s)
+    s = re.sub(r'^(uma|um|a)\s+', '', s)
+    return s.strip()
+
+
+def _parse_half_half_segment(segment: str) -> tuple[str | None, str | None]:
+    """Extrai par de sabores de um trecho (uma pizza meio a meio)."""
+    segment = segment.strip()
+    s1, s2 = parse_half_half(segment)
+    if s1 and s2:
+        return s1, s2
+    # "queijo com bolonhesa" sem palavra metade (comum na 2ª pizza após "e outra")
+    match = re.match(r'^(.+?)\s+com\s+(.+)$', segment.lower())
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+    return None, None
+
+
+def parse_multiple_half_half_orders(text: str) -> list[tuple[str, str]]:
+    """
+    Extrai várias pizzas meio a meio de um pedido falado.
+    Ex: '1 calabresa com metade de frango e outra de queijo com bolonhesa'
+    """
+    text_lower = text.lower().strip()
+    text_lower = re.sub(r'^(queria|quero|vou querer|me vê|me ve)\s+', '', text_lower)
+
+    double = re.search(
+        r'(.+?)\s+(?:com\s+)?(?:metade|meia|meio)\s+(?:de\s+)?(.+?)\s+e\s+(?:uma\s+)?outra\s+(?:de\s+)?'
+        r'(.+?)\s+(?:com\s+)?(?:metade|meia|meio)\s+(?:de\s+)?(.+)$',
+        text_lower,
+    )
+    if double:
+        return [
+            (_clean_half_sabor(double.group(1)), _clean_half_sabor(double.group(2))),
+            (_clean_half_sabor(double.group(3)), _clean_half_sabor(double.group(4))),
+        ]
+
+    if re.search(r'\s+e\s+(?:uma\s+)?outra\s+(?:de\s+)?', text_lower):
+        parts = re.split(r'\s+e\s+(?:uma\s+)?outra\s+(?:de\s+)?', text_lower, maxsplit=1)
+        pairs = []
+        for part in parts:
+            s1, s2 = _parse_half_half_segment(part.strip())
+            if s1 and s2:
+                pairs.append((_clean_half_sabor(s1), _clean_half_sabor(s2)))
+        if pairs:
+            return pairs
+
+    s1, s2 = _parse_half_half_segment(text_lower)
+    if s1 and s2:
+        return [(_clean_half_sabor(s1), _clean_half_sabor(s2))]
+    return []
+
+
+def build_half_half_cart_item(sabor1: str, sabor2: str) -> tuple[dict | None, str | None]:
+    """Monta item meio a meio. Retorna (item, sabor_nao_encontrado)."""
+    pizza1 = resolve_half_half_by_number(sabor1) if str(sabor1).startswith('#') else find_product_fuzzy(sabor1)
+    pizza2 = resolve_half_half_by_number(sabor2) if str(sabor2).startswith('#') else find_product_fuzzy(sabor2)
+    if not pizza1:
+        return None, sabor1
+    if not pizza2:
+        return None, sabor2
+    price = max(float(pizza1.price), float(pizza2.price))
+    label = f"½ {pizza1.name} + ½ {pizza2.name}"
+    return {
+        'type': 'half_half',
+        'pizza1_id': pizza1.id,
+        'pizza2_id': pizza2.id,
+        'pizza1_name': pizza1.name,
+        'pizza2_name': pizza2.name,
+        'product_id': pizza1.id,
+        'name': label,
+        'price': price,
+        'quantity': 1,
+    }, None
+
+
+def handle_multiple_half_half_order(phone: str, message: str, pairs: list[tuple[str, str]] | None = None) -> str:
+    """Processa pedido com uma ou mais pizzas meio a meio."""
+    pairs = pairs or parse_multiple_half_half_orders(message)
+    if not pairs:
+        return handle_half_half_order(phone, message)
+
+    cart_items = []
+    not_found = []
+    for s1, s2 in pairs:
+        item, missing = build_half_half_cart_item(s1, s2)
+        if item:
+            cart_items.append(item)
+        elif missing:
+            not_found.append(missing)
+
+    if not_found:
+        sabores = ', '.join(f"*{s}*" for s in not_found)
+        return (
+            f"Não achei no cardápio: {sabores} 🤔\n\n"
+            "Digite *cardápio* pra ver os sabores ou repete o pedido.\n"
+            "_Ex: calabresa com metade frango e outra 4 queijos com portuguesa_"
+        )
+
+    if not cart_items:
+        return handle_half_half_order(phone, message)
+
+    subtotal = sum(Decimal(str(i['price'])) for i in cart_items)
+    draft = {
+        'items': cart_items,
+        'order_type': 'unknown',
+        'payment_method': 'unknown',
+        'subtotal': float(subtotal),
+        'delivery_fee': 0,
+        'neighborhood': None,
+        'address': None,
+        'is_promo': False,
+    }
+
+    missing = get_missing_fields(draft)
+    if not missing:
+        save_draft_state(set_conversation_state, phone, draft)
+        send_whatsapp_buttons(phone, build_draft_summary(draft), ['SIM', 'Mudar'])
+        return ''
+
+    waiting = missing[0]
+    set_conversation_state(phone, 'awaiting_partial_order', {
+        'partial_draft': draft,
+        'waiting_field': waiting,
+    })
+    _send_partial_prompt(phone, draft, waiting)
+    return ''
 
 
 def resolve_half_half_by_number(sabor: str) -> Product:
@@ -985,11 +1156,142 @@ def parse_multiple_pizzas(text: str) -> list:
     return None
 
 
+def try_handle_simple_intent(phone: str, text: str, customer_name: str = '') -> JsonResponse | None:
+    """Responde FAQ/saudação sem LLM. Retorna None se não for intenção simples."""
+    state = get_conversation_state(phone)
+    if state.get('state', 'welcome') != 'welcome':
+        return None
+
+    intent = detect_simple_intent(text)
+    if not intent:
+        return None
+
+    if intent == 'cardapio':
+        send_whatsapp_message(phone, handle_menu_request(phone))
+        reset_confusion_count(phone)
+        return JsonResponse({"status": "ok", "action": "cardapio"})
+
+    if intent == 'repetir_pedido':
+        return try_handle_repeat_order(phone)
+
+    settings_obj = BusinessSettings.get_settings()
+    response = get_simple_intent_message(intent, settings_obj, customer_name)
+    if not response:
+        return None
+
+    send_whatsapp_message(phone, response)
+    reset_confusion_count(phone)
+    return JsonResponse({"status": "ok", "action": intent})
+
+
+def try_handle_repeat_order(phone: str) -> JsonResponse:
+    """Repete último pedido do cliente."""
+    order = get_last_order_for_customer(phone)
+    if not order:
+        send_whatsapp_message(phone, get_no_previous_order_message())
+        return JsonResponse({"status": "ok", "action": "no_previous_order"})
+
+    draft = order_to_draft(order)
+    if not draft:
+        send_whatsapp_message(phone, get_no_previous_order_message())
+        return JsonResponse({"status": "ok", "action": "no_previous_order"})
+
+    save_draft_state(set_conversation_state, phone, draft)
+    reset_confusion_count(phone)
+    send_whatsapp_buttons(phone, build_repeat_order_message(draft), ['SIM', 'Mudar'])
+    return JsonResponse({"status": "ok", "action": "repeat_order"})
+
+
+def _send_partial_prompt(phone: str, partial: dict, waiting_field: str):
+    msg = build_partial_progress_message(partial, waiting_field)
+    if waiting_field == 'payment':
+        send_whatsapp_buttons(phone, msg, ['PIX', 'Dinheiro', 'Cartão'])
+    elif waiting_field == 'order_type':
+        send_whatsapp_buttons(phone, msg, ['Entrega', 'Retirada'])
+    else:
+        send_whatsapp_message(phone, msg)
+
+
+def try_process_partial_order(
+    phone: str, entities: dict, address_resolution: dict | None
+) -> JsonResponse | None:
+    """Pedido incompleto → uma pergunta por vez."""
+    partial = entities_to_partial_draft(entities, address_resolution, find_product_fuzzy)
+    if not partial:
+        return None
+
+    missing = get_missing_fields(partial)
+    if not missing:
+        complete = partial_to_complete_draft(partial)
+        if complete:
+            save_draft_state(set_conversation_state, phone, complete)
+            reset_confusion_count(phone)
+            send_whatsapp_buttons(phone, build_draft_summary(complete), ['SIM', 'Mudar'])
+            return JsonResponse({"status": "ok", "action": "draft_confirmation"})
+        return None
+
+    waiting = missing[0]
+    set_conversation_state(phone, 'awaiting_partial_order', {
+        'partial_draft': partial,
+        'waiting_field': waiting,
+    })
+    reset_confusion_count(phone)
+    _send_partial_prompt(phone, partial, waiting)
+    return JsonResponse({"status": "ok", "action": "partial_order", "waiting": waiting})
+
+
+def handle_partial_order(phone: str, message: str) -> str:
+    """Preenche próximo campo do pedido parcial."""
+    state = get_conversation_state(phone)
+    partial = state.get('data', {}).get('partial_draft') or {}
+    field = state.get('data', {}).get('waiting_field')
+
+    if not partial or not field:
+        return send_welcome_with_menu(phone)
+
+    updated = fill_partial_field(partial, field, message, find_product_fuzzy)
+    if not updated:
+        return f"Não peguei 😅\n\n{get_question_for_field(field)}"
+
+    missing = get_missing_fields(updated)
+    if not missing:
+        save_draft_state(set_conversation_state, phone, updated)
+        send_whatsapp_buttons(phone, build_draft_summary(updated), ['SIM', 'Mudar'])
+        return ''
+
+    waiting = missing[0]
+    set_conversation_state(phone, 'awaiting_partial_order', {
+        'partial_draft': updated,
+        'waiting_field': waiting,
+    })
+    _send_partial_prompt(phone, updated, waiting)
+    return ''
+
+
 def handle_welcome(phone: str, message: str, msg_type: str) -> str:
     """Trata estado inicial."""
     message_lower = message.lower().strip()
     settings_obj = BusinessSettings.get_settings()
     promo_active = settings_obj.promo_active and settings_obj.promo_text
+
+    customer = Customer.objects.filter(phone=phone).first()
+    customer_name = customer.name if customer else ''
+
+    simple_intent = detect_simple_intent(message)
+    if simple_intent == 'cardapio':
+        return handle_menu_request(phone)
+    if simple_intent == 'repetir_pedido':
+        customer = Customer.objects.filter(phone=phone).first()
+        order = get_last_order_for_customer(phone)
+        if not order:
+            return get_no_previous_order_message()
+        draft = order_to_draft(order)
+        if not draft:
+            return get_no_previous_order_message()
+        save_draft_state(set_conversation_state, phone, draft)
+        return build_repeat_order_message(draft)
+    if simple_intent and simple_intent != 'cardapio':
+        return get_simple_intent_message(simple_intent, settings_obj, customer_name) or send_welcome_with_menu(phone)
 
     # Verifica se quer promoção
     if message_lower == '1' and promo_active:
@@ -1062,8 +1364,13 @@ def handle_welcome(phone: str, message: str, msg_type: str) -> str:
         response += f"2️⃣ Só isso"
         return response
 
-    # Verifica se é pedido meio a meio
+    # Verifica se é pedido meio a meio (inclui múltiplas: "e outra...")
     if is_half_half_request(message):
+        if re.search(r'\boutra\b', message_lower):
+            return handle_multiple_half_half_order(phone, message)
+        multi_pairs = parse_multiple_half_half_orders(message)
+        if len(multi_pairs) >= 2:
+            return handle_multiple_half_half_order(phone, message, multi_pairs)
         return handle_half_half_order(phone, message)
 
     # Verifica se quer retirada
@@ -1120,29 +1427,10 @@ def handle_welcome(phone: str, message: str, msg_type: str) -> str:
 
 
 def send_welcome_with_menu(phone: str) -> str:
-    """Envia saudação com promoção."""
+    """Envia saudação conversacional (sem menu numérico obrigatório)."""
     settings_obj = BusinessSettings.get_settings()
-
-    welcome = "Boa noite, já estamos atendendo! 🍕\n\n"
-
-    # Adiciona promoção se ativa
-    if settings_obj.promo_active and settings_obj.promo_text:
-        welcome += "🔥 *PROMOÇÃO DO DIA* 🔥\n"
-        welcome += "━━━━━━━━━━━━━━━━━━━━\n"
-        welcome += "🍕 *2 PIZZAS* tamanho *G*\n"
-        welcome += "   _(Grande - 8 pedaços cada)_\n"
-        welcome += "💰 Por apenas *R$ 55,00*\n"
-        welcome += "━━━━━━━━━━━━━━━━━━━━\n"
-        welcome += "📦 Delivery ou retirada no local\n"
-        welcome += "🚗 Taxa de entrega conforme o bairro\n\n"
-        welcome += "1️⃣ Quero a *PROMOÇÃO* (2 pizzas G por R$55)\n"
-        welcome += "2️⃣ Ver cardápio completo\n"
-        welcome += "3️⃣ Já sei o que quero"
-    else:
-        welcome += "1️⃣ Ver cardápio\n"
-        welcome += "2️⃣ Já sei o que quero"
-
-    return welcome
+    promo_active = bool(settings_obj.promo_active and settings_obj.promo_text)
+    return get_conversational_welcome(promo_active)
 
 
 def handle_half_half_order(phone: str, message: str) -> str:
@@ -2559,7 +2847,7 @@ def handle_confirming_pickup(phone: str, message: str) -> str:
                     product=product,
                     quantity=qty,
                     unit_price=unit_price,
-                    notes=obs
+                    notes=obs or ''
                 )
 
         order.calculate_totals()
@@ -2942,7 +3230,7 @@ def handle_confirming_delivery(phone: str, message: str) -> str:
                     product=product,
                     quantity=qty,
                     unit_price=unit_price,
-                    notes=obs
+                    notes=obs or ''
                 )
 
         order.calculate_totals()
@@ -3575,6 +3863,8 @@ def process_n8n_envelope(data: dict) -> JsonResponse:
 
     # Estados que devem SEMPRE usar o fluxo padrão (não LLM)
     priority_states = [
+        'awaiting_draft_confirmation',
+        'awaiting_partial_order',
         'awaiting_promo_pizza_1', 'awaiting_promo_pizza_2', 'awaiting_promo_more_items',
         'awaiting_promo_another_item', 'awaiting_promo_order_type', 'awaiting_more_promo',
         'awaiting_promo_half_or_full', 'awaiting_promo_second_after_half',
@@ -3591,6 +3881,11 @@ def process_n8n_envelope(data: dict) -> JsonResponse:
         logger.info(f"[N8N] Estado prioritário '{current_state}' - ignorando LLM, usando fluxo padrão")
         return process_standard_message(phone, text, msg_type)
 
+    # Intenções simples (FAQ, saudação) — sem LLM
+    simple_response = try_handle_simple_intent(phone, text, customer_name)
+    if simple_response:
+        return simple_response
+
     # Se NÃO usou LLM, processa normalmente (fluxo de estados)
     if not routing.get('used_llm'):
         return process_standard_message(phone, text, msg_type)
@@ -3606,6 +3901,24 @@ def process_n8n_envelope(data: dict) -> JsonResponse:
     entities = llm_result.get('entities', {})
 
     logger.info(f"[N8N] Intent={intent}, confidence={llm_result.get('confidence')}")
+
+    # Saudação conversacional + pedido vago (ex: áudio "oi tudo bem queria pedir uma pizza")
+    if intent in ('greeting', 'menu_request', 'other') and current_state == 'welcome':
+        if intent == 'menu_request' or detect_simple_intent(text) == 'cardapio':
+            send_whatsapp_message(phone, handle_menu_request(phone))
+            return JsonResponse({"status": "ok", "action": "cardapio"})
+        if wants_to_order_vague(text) and not has_order_details(text):
+            settings_obj = BusinessSettings.get_settings()
+            response = get_simple_intent_message('saudacao_pedido', settings_obj, customer_name)
+            send_whatsapp_message(phone, response)
+            reset_confusion_count(phone)
+            return JsonResponse({"status": "ok", "action": "saudacao_pedido"})
+        if intent == 'greeting' and not has_order_details(text):
+            settings_obj = BusinessSettings.get_settings()
+            response = get_simple_intent_message('saudacao', settings_obj, customer_name)
+            send_whatsapp_message(phone, response)
+            reset_confusion_count(phone)
+            return JsonResponse({"status": "ok", "action": "saudacao"})
 
     # Se tem resolução de endereço com match
     if address_resolution and address_resolution.get('status') == 'matched':
@@ -3646,6 +3959,21 @@ def process_n8n_envelope(data: dict) -> JsonResponse:
     # Processa intent do pedido
     order_entities = entities.get('order', {})
     items = order_entities.get('items', [])
+
+    # Pedido completo em uma mensagem → confirmação simples
+    if intent in ('order_build', 'add_item') and items:
+        draft_response = try_process_complete_order_draft(
+            phone, entities, address_resolution, llm_result.get('confidence', 0)
+        )
+        if draft_response:
+            return draft_response
+
+        partial_response = try_process_partial_order(phone, entities, address_resolution)
+        if partial_response:
+            return partial_response
+
+        if order_entities.get('is_half_half') or any(it.get('half_flavors') for it in items):
+            return try_process_half_half_from_llm(phone, entities, address_resolution)
 
     # Verifica se cliente pediu tamanho que não existe
     if order_entities.get('invalid_size'):
@@ -3702,6 +4030,13 @@ def process_n8n_envelope(data: dict) -> JsonResponse:
 
     # Para outros intents ou baixa confiança, usa fluxo normal
     logger.info(f"[N8N] Fallback para fluxo normal: intent={intent}")
+
+    if is_half_half_request(text) and re.search(r'\boutra\b', text.lower()):
+        result = handle_multiple_half_half_order(phone, text)
+        if result:
+            send_whatsapp_message(phone, result)
+        return JsonResponse({"status": "ok", "action": "half_half_multi"})
+
     return process_standard_message(phone, text, msg_type)
 
 
@@ -3711,6 +4046,18 @@ def process_standard_message(phone: str, text: str, msg_type: str) -> JsonRespon
     current_state = state.get("state", "welcome")
 
     logger.info(f"[Standard] phone={phone}, state={current_state}, text={text[:50]}...")
+
+    if is_help_request(text):
+        send_whatsapp_message(phone, get_help_message())
+        reset_confusion_count(phone)
+        return JsonResponse({"status": "ok", "action": "help"})
+
+    if current_state == 'welcome':
+        customer = Customer.objects.filter(phone=phone).first()
+        cname = customer.name if customer else ''
+        simple_response = try_handle_simple_intent(phone, text, cname)
+        if simple_response:
+            return simple_response
 
     # Verifica comandos especiais
     if is_cancel_command(text):
@@ -3723,13 +4070,155 @@ def process_standard_message(phone: str, text: str, msg_type: str) -> JsonRespon
         send_whatsapp_message(phone, response)
         return JsonResponse({"status": "ok"})
 
+    # Resposta humanizada (perguntas, saudações no meio do fluxo)
+    humanized = handle_humanized_input(phone, text, current_state)
+    if humanized:
+        send_whatsapp_message(phone, humanized)
+        reset_confusion_count(phone)
+        return JsonResponse({"status": "ok"})
+
     # Processa de acordo com o estado
     response = dispatch_state_handler(phone, text, msg_type, current_state)
 
     if response:
+        reset_confusion_count(phone)
         send_whatsapp_message(phone, response)
+    else:
+        count = increment_confusion_count(phone)
+        if count >= 2 or should_simplify_response(phone):
+            send_whatsapp_message(phone, get_simplify_message())
+        else:
+            help_text = get_context_help(current_state)
+            send_whatsapp_message(phone, f"Não peguei 😅\n\n{help_text}")
 
     return JsonResponse({"status": "ok"})
+
+
+def handle_draft_confirmation(phone: str, message: str) -> str:
+    """Confirma ou corrige rascunho de pedido montado pelo LLM."""
+    state = get_conversation_state(phone)
+    draft = state.get('data', {}).get('draft')
+
+    if not draft:
+        return send_welcome_with_menu(phone)
+
+    if is_confirmation(message):
+        reset_confusion_count(phone)
+        return finalize_order_from_draft(phone, draft)
+
+    if is_denial(message) or normalize_text(message) in ('mudar', 'alterar', 'mudar pedido'):
+        set_conversation_state(phone, 'welcome', {'draft': None})
+        return (
+            "Sem problemas! Manda de novo do seu jeito 😊\n\n"
+            "Pode ser por *áudio* ou *texto*.\n"
+            "Exemplo: _\"2 calabresa entrega aponia pix\"_"
+        )
+
+    # Trata como correção — reprocessa como novo pedido
+    clear_conversation_state(phone)
+    return handle_welcome(phone, message, 'chat')
+
+
+def finalize_order_from_draft(phone: str, draft: dict) -> str:
+    """Cria pedido a partir do rascunho confirmado e segue para pagamento."""
+    customer = get_or_create_customer(phone)
+    order_type = draft.get('order_type', 'DELIVERY')
+    delivery_fee = Decimal(str(draft.get('delivery_fee', 0)))
+
+    if order_type == 'DELIVERY':
+        customer.address = draft.get('address', '')
+        customer.neighborhood = draft.get('neighborhood', '')
+        customer.save()
+
+    order = Order.objects.create(
+        customer=customer,
+        order_type=order_type,
+        delivery_address=draft.get('address', '') if order_type == 'DELIVERY' else '',
+        neighborhood=draft.get('neighborhood', '') if order_type == 'DELIVERY' else '',
+        delivery_fee=delivery_fee if order_type == 'DELIVERY' else Decimal('0'),
+        status='AWAITING_PAYMENT',
+    )
+
+    for item in draft.get('items', []):
+        product = Product.objects.get(id=item['product_id'])
+        unit_price = Decimal(str(item.get('price', product.price)))
+        if draft.get('is_promo'):
+            unit_price = Decimal('27.50')
+
+        if item.get('type') == 'half_half':
+            notes = f"MEIO A MEIO: ½ {item.get('pizza1_name', '')} + ½ {item.get('pizza2_name', '')}"
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=item.get('quantity', 1),
+                unit_price=unit_price,
+                notes=notes,
+            )
+        else:
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                quantity=item.get('quantity', 1),
+                unit_price=unit_price,
+            )
+
+    order.calculate_totals()
+    order.save()
+
+    payment = (draft.get('payment_method') or 'unknown').lower()
+    set_conversation_state(phone, 'awaiting_payment_choice', {'order_id': order.id})
+
+    if payment == 'pix':
+        return handle_payment_choice(phone, 'pix')
+    if payment == 'cash':
+        return handle_payment_choice(phone, 'dinheiro')
+    if payment in ('credit', 'debit'):
+        return handle_payment_choice(phone, 'cartão crédito' if payment == 'credit' else 'cartão débito')
+
+    return (
+        f"Pedido confirmado! ✅\n\n"
+        f"💰 Como vai pagar?\n"
+        f"PIX, dinheiro ou cartão?"
+    )
+
+
+def try_process_half_half_from_llm(phone: str, entities: dict, address_resolution: dict | None) -> JsonResponse:
+    """Processa pedido meio a meio extraído pelo LLM."""
+    partial = entities_to_partial_draft(entities, address_resolution, find_product_fuzzy)
+    if not partial:
+        text = entities.get('order', {}).get('items', [{}])[0].get('name', '')
+        return process_standard_message(phone, text, 'chat')
+
+    missing = get_missing_fields(partial)
+    if not missing:
+        save_draft_state(set_conversation_state, phone, partial)
+        reset_confusion_count(phone)
+        send_whatsapp_buttons(phone, build_draft_summary(partial), ['SIM', 'Mudar'])
+        return JsonResponse({"status": "ok", "action": "draft_confirmation"})
+
+    waiting = missing[0]
+    set_conversation_state(phone, 'awaiting_partial_order', {
+        'partial_draft': partial,
+        'waiting_field': waiting,
+    })
+    reset_confusion_count(phone)
+    _send_partial_prompt(phone, partial, waiting)
+    return JsonResponse({"status": "ok", "action": "partial_half_half", "waiting": waiting})
+
+
+def try_process_complete_order_draft(phone: str, entities: dict, address_resolution: dict, confidence: float) -> JsonResponse | None:
+    """Se o LLM extraiu pedido completo, pede confirmação simples."""
+    if confidence < 0.75:
+        return None
+
+    draft = entities_to_draft(entities, address_resolution, find_product_fuzzy)
+    if not draft:
+        return None
+
+    save_draft_state(set_conversation_state, phone, draft)
+    reset_confusion_count(phone)
+    send_whatsapp_buttons(phone, build_draft_summary(draft), ['SIM', 'Mudar'])
+    return JsonResponse({"status": "ok", "action": "draft_confirmation"})
 
 
 def dispatch_state_handler(phone: str, text: str, msg_type: str, current_state: str) -> str:
@@ -3765,6 +4254,8 @@ def dispatch_state_handler(phone: str, text: str, msg_type: str, current_state: 
         "awaiting_promo_half_or_full": lambda: handle_promo_half_or_full(phone, text),
         "awaiting_promo_second_after_half": lambda: handle_promo_second_after_half(phone, text),
         "awaiting_size_confirmation": lambda: handle_size_confirmation(phone, text),
+        "awaiting_draft_confirmation": lambda: handle_draft_confirmation(phone, text),
+        "awaiting_partial_order": lambda: handle_partial_order(phone, text),
     }
 
     handler = handlers.get(current_state, lambda: handle_welcome(phone, text, msg_type))
@@ -4275,18 +4766,27 @@ def bot_webhook(request):
 
     logger.info(f"Mensagem de {phone}: {body[:50]}... (estado: {current_state})")
 
-    # Verifica se é mensagem de áudio em qualquer estado
+    # Verifica se é mensagem de áudio — transcreve e processa como texto
     audio_types = ['ptt', 'audio', 'voice', 'audio_message']
     if msg_type in audio_types or media_type.lower() in audio_types:
         logger.info(f"ÁUDIO DETECTADO - msg_type={msg_type}, media_type={media_type}")
-        response = (
-            f"Oi! Infelizmente não consigo ouvir áudios 😅\n\n"
-            f"Mas você pode ligar pra gente:\n"
-            f"📞 *{CONTACT_PHONE}*\n\n"
-            f"Ou se preferir, pode digitar seu pedido aqui mesmo! 🍕"
-        )
-        send_whatsapp_message(phone, response)
-        return JsonResponse({"status": "ok"})
+        send_whatsapp_message(phone, get_audio_ack_message(current_state))
+
+        result = transcribe_waha_payload(payload)
+        if result.get('success') and result.get('text'):
+            logger.info(f"Áudio transcrito: {result['text'][:80]}")
+            body = result['text']
+            msg_type = 'chat'
+            # Continua processamento abaixo com texto transcrito
+        else:
+            logger.warning(f"Falha na transcrição: {result.get('error')}")
+            send_whatsapp_message(phone, get_audio_failed_message(current_state))
+            return JsonResponse({"status": "ok", "action": "audio_transcription_failed"})
+
+    if is_help_request(body):
+        send_whatsapp_message(phone, get_help_message())
+        reset_confusion_count(phone)
+        return JsonResponse({"status": "ok", "action": "help"})
 
     # Verifica comandos especiais primeiro
     if is_cancel_command(body):
@@ -4383,6 +4883,9 @@ def bot_webhook(request):
 
     elif current_state == "awaiting_size_confirmation":
         response = handle_size_confirmation(phone, body)
+
+    elif current_state == "awaiting_draft_confirmation":
+        response = handle_draft_confirmation(phone, body)
 
     else:
         response = handle_welcome(phone, body, msg_type)

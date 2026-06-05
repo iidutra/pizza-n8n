@@ -55,8 +55,15 @@ services:
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
       - N8N_SECURE_COOKIE=false
-      # API Key para LLM (Groq - grátis)
+      # LLM (Anthropic Claude Haiku) + STT (Groq Whisper)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-your_anthropic_api_key_here}
+      - ANTHROPIC_LLM_MODEL=${ANTHROPIC_LLM_MODEL:-claude-haiku-4-5}
       - GROQ_API_KEY=${GROQ_API_KEY:-your_groq_api_key_here}
+      # WAHA — usado pelo node de transcrição de áudio
+      - WAHA_URL=http://waha:3000
+      - WAHA_API_KEY=pizzaria-api-key-123
+      - WAHA_SESSION=default
+      - BACKEND_URL=http://web:8000
     volumes:
       - n8ndata:/home/node/.n8n
     depends_on:
@@ -100,6 +107,7 @@ services:
       - WAHA_URL=http://waha:3000
       - WAHA_SESSION=default
       - WAHA_API_KEY=pizzaria-api-key-123
+      - GROQ_API_KEY=${GROQ_API_KEY:-your_groq_api_key_here}
     ports:
       - "8000:8000"
     volumes:
