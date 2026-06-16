@@ -1,0 +1,45 @@
+---
+description: Como o agente Cursor deve trabalhar neste projeto
+globs: backend/**,frontend/**,pastoral-coroinhas/**
+alwaysApply: false
+---
+
+# Comportamento do Agente
+
+## Antes de codar
+
+1. Ler código adjacente e seguir convenções existentes
+2. Identificar bounded context correto antes de criar arquivos
+3. Preferir estender Service/Repository existente a criar abstração nova
+
+## Escopo
+
+- Diff mínimo e focado na tarefa
+- Não adicionar testes, docs ou refactors não solicitados
+- Não criar microserviço, helper ou wrapper de 1 linha
+- Não traduzir nomes de domínio para inglês
+
+## Ao implementar feature
+
+1. Model + migration (se necessário)
+2. Repository → Service → Serializer → ViewSet → URL
+3. Frontend: types → API client → hook → componente
+4. Teste de service (backend) ou formulário crítico (frontend)
+
+## Segurança
+
+- Validar permissões no backend (nunca confiar só no frontend)
+- Dados sensíveis (CPF) mascarados na UI; audit log em alterações
+- Rate limit em endpoints públicos (`/inscricoes`)
+
+## Git
+
+- Commit só quando o usuário pedir explicitamente
+- Nunca `--no-verify`, force push em main, ou amend após push remoto
+
+## Proibido
+
+- Lógica de negócio em ViewSet ou componente React
+- `Model.objects` direto na view
+- Secrets hardcoded ou commitados
+- Over-engineering (CQRS completo, event sourcing, microserviços no MVP)

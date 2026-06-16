@@ -1,0 +1,246 @@
+@import "tailwindcss";
+
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(98.5% 0.006 80);
+  --foreground: oklch(20% 0.03 30);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(20% 0.03 30);
+  --popover: oklch(100% 0 0);
+  --popover-foreground: oklch(20% 0.03 30);
+  --primary: oklch(34% 0.11 25);
+  --primary-foreground: oklch(99% 0.008 85);
+  --secondary: oklch(96% 0.018 80);
+  --secondary-foreground: oklch(28% 0.05 30);
+  --muted: oklch(96% 0.014 80);
+  --muted-foreground: oklch(48% 0.025 50);
+  --accent: oklch(76% 0.14 75);
+  --accent-foreground: oklch(22% 0.05 30);
+  --destructive: oklch(55% 0.22 27);
+  --destructive-foreground: oklch(98.5% 0.01 85);
+  --border: oklch(91% 0.015 80);
+  --input: oklch(93% 0.015 80);
+  --ring: oklch(45% 0.09 35);
+
+  --gold: oklch(76% 0.14 75);
+  --gold-soft: oklch(88% 0.08 80);
+  --burgundy: oklch(34% 0.11 25);
+  --burgundy-deep: oklch(24% 0.08 25);
+
+  --gradient-hero: linear-gradient(135deg, oklch(28% 0.1 25), oklch(42% 0.12 30));
+  --gradient-gold: linear-gradient(135deg, oklch(78% 0.14 80), oklch(68% 0.16 60));
+  --gradient-parchment: linear-gradient(180deg, oklch(98.5% 0.006 80), oklch(96% 0.018 75));
+
+  --shadow-soft: 0 4px 20px -8px oklch(34% 0.11 25 / 0.25);
+  --shadow-elegant: 0 20px 50px -20px oklch(24% 0.08 25 / 0.35);
+  --shadow-gold: 0 8px 24px -10px oklch(76% 0.14 75 / 0.4);
+
+  --sidebar: oklch(22% 0.07 28);
+  --sidebar-foreground: oklch(95% 0.02 80);
+  --sidebar-primary: oklch(76% 0.14 75);
+  --sidebar-primary-foreground: oklch(22% 0.05 30);
+  --sidebar-accent: oklch(30% 0.08 28);
+  --sidebar-accent-foreground: oklch(97% 0.02 80);
+  --sidebar-border: oklch(34% 0.07 28);
+  --sidebar-ring: oklch(76% 0.14 75);
+
+  --font-display: var(--font-cormorant), "Times New Roman", serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-burgundy: var(--burgundy);
+  --color-burgundy-deep: var(--burgundy-deep);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --font-sans: var(--font-sans);
+  --radius-lg: var(--radius);
+}
+
+body {
+  background: var(--gradient-parchment);
+  background-attachment: fixed;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.bg-gradient-hero {
+  background: var(--gradient-hero);
+}
+
+.bg-gradient-gold {
+  background: var(--gradient-gold);
+}
+
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+.shadow-elegant {
+  box-shadow: var(--shadow-elegant);
+}
+
+.shadow-gold {
+  box-shadow: var(--shadow-gold);
+}
+
+.sidebar-glow {
+  background-image:
+    radial-gradient(circle at 20% 10%, var(--gold) 0, transparent 40%),
+    radial-gradient(circle at 80% 80%, var(--gold) 0, transparent 35%);
+}
+
+.card-liturgical {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius);
+  background: var(--gradient-gold);
+  color: var(--burgundy-deep);
+  font-weight: 600;
+  box-shadow: var(--shadow-gold);
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.btn-primary:hover {
+  opacity: 0.92;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.btn-outline:hover {
+  background: var(--secondary);
+}
+
+.input-field {
+  width: 100%;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  padding-right: 0.75rem;
+  padding-left: 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--input);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.input-field--icon-left {
+  padding-left: 2.5rem;
+}
+
+.input-field--icon-right {
+  padding-right: 2.5rem;
+}
+
+.input-field::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.85;
+}
+
+.input-field:focus {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.badge-ativo {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: oklch(92% 0.06 145);
+  color: oklch(35% 0.1 145);
+}
+
+.badge-formacao {
+  display: inline-block;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: oklch(94% 0.05 85);
+  color: oklch(40% 0.08 70);
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--burgundy);
+  line-height: 1;
+}
+
+.table-liturgical {
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+.table-liturgical thead {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.table-liturgical th,
+.table-liturgical td {
+  padding: 0.75rem 1.5rem;
+  text-align: left;
+}
+
+.table-liturgical tbody tr {
+  border-top: 1px solid var(--border);
+}
+
+.table-liturgical tbody tr:hover {
+  background: oklch(98% 0.01 80);
+}

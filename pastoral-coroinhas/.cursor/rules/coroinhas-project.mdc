@@ -1,0 +1,35 @@
+---
+description: Contexto geral do projeto Pastoral dos Coroinhas — stack, domínio e princípios
+globs: backend/**,frontend/**,pastoral-coroinhas/**
+alwaysApply: false
+---
+
+# Pastoral dos Coroinhas — Projeto
+
+Sistema paroquial para gestão de coroinhas. Protótipo UI: altar-angels-hub.lovable.app.
+
+## Stack
+
+- **Frontend:** Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui
+- **Backend:** Django 5 + DRF + Celery + PostgreSQL + Redis + MinIO
+- **Infra:** Docker Compose, GitLab CI, Prometheus + Grafana + Loki, Sentry
+
+## Princípios
+
+1. **Modular monolith primeiro** — não criar microserviço sem métrica que justifique
+2. **Domínio em PT-BR** — `Coroinha`, `Escala`, `Presenca` (não traduzir para inglês no código de negócio)
+3. **Mínimo diff** — resolver só o que foi pedido; não refatorar código adjacente
+4. **Views sem lógica de negócio** — regras ficam em Services; acesso a dados em Repositories
+5. **LGPD** — dados de menores; audit log em alterações sensíveis (presença, inscrição, mensagens)
+
+## Bounded contexts (apps Django)
+
+`identity`, `membership`, `scheduling`, `attendance`, `training`, `communication`, `content`, `reporting`
+
+## Perfis (autenticação)
+
+`Coordenador` (admin) | `Secretario` | `Padre` | `Pai` | `Coroinha` — 1 perfil por usuário. Ver `coroinhas-auth.mdc`.
+
+## Commits
+
+Conventional Commits em PT: `feat(escalas): sorteio equilibrado`, `fix(presenca): calculo de percentual`

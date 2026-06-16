@@ -1,0 +1,43 @@
+---
+description: Padrões Django/DRF — services, repositories, API e testes
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Backend Django
+
+## Camadas (obrigatório)
+
+```
+ViewSet → Serializer (DTO) → Service → Repository → Model
+```
+
+- **ViewSet:** HTTP, permissões, paginação — sem `if` de negócio
+- **Service:** `@transaction.atomic`, orquestra repositórios e dispara domain events
+- **Repository:** queries encapsuladas; ViewSet nunca faz `Model.objects.filter(...)` direto
+- **Model:** campos e constraints; sem lógica complexa
+
+## Padrões
+
+- **Strategy** para sorteio de escalas (`SorteioEquilibradoStrategy`, `SelecaoManualStrategy`)
+- **Specification** para filtros reutilizáveis (`CoroinhaAtivoSpec`)
+- **Domain events** via signals/Celery após commit (`EscalaCriada` → notificação)
+
+## API
+
+- Prefixo `/api/v1/`, respostas JSON, erros `{ "detail": "..." }`
+- Permissões por role em cada ViewSet
+- Inscrição pública: `POST /inscricoes` sem auth + rate limit Redis
+
+## Código
+
+- Ruff + type hints em services/repositories
+- pytest + factory_boy; cobertura mínima 80% em services
+- Logs JSON com structlog: `logger.info("escala_criada", escala_id=id)`
+
+## Exemplo
+
+```python
+# ❌ ViewSet com lógica de sorteio
+# ✅ EscalaService.montar(data, missa_id, strategy=SorteioEquilibradoStrategy())
+```

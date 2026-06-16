@@ -1,0 +1,154 @@
+---
+description: Autenticação JWT, perfis de usuário e matriz de permissões RBAC
+globs: backend/**/identity/**,backend/**/auth/**,frontend/**/auth/**,frontend/**/(auth)/**,frontend/**/(portal)/**
+alwaysApply: false
+---
+
+# Autenticação e Perfis
+
+## Princípio
+
+**Usuario** = identidade de login. **Perfil de domínio** = papel no sistema. Um usuário tem **exatamente 1 perfil**.
+
+Conta de **Pai** e **Coroinha** é criada na aprovação da inscrição (CPF obrigatório do responsável; CPF do coroinha se informado).
+
+## Login — dois modos
+
+| Grupo | Credencial | Campo |
+|-------|------------|-------|
+| Staff (`Coordenador`, `Secretario`, `Padre`) | e-mail + senha | `Usuario.email` |
+| Família (`Pai`, `Coroinha`) | **CPF + senha** | `Usuario.cpf` |
+
+```python
+# POST /api/v1/auth/login
+{ "cpf": "12345678901", "senha": "..." }      # família
+{ "email": "padre@paroquia.org", "senha": "..." }  # staff
+```
+
+- CPF sempre **normalizado** (só dígitos) antes de buscar; validar dígitos verificadores
+- Armazenar CPF normalizado; exibir mascarado na UI (`***.456.789-**`)
+
+## Recuperação de senha (família)
+
+Sem e-mail, sem token. CPF + **data de nascimento** como segundo fator (dado já coletado na inscrição):
+
+```
+POST /api/v1/auth/recuperar-senha
+{
+  "cpf": "12345678901",
+  "data_nascimento": "2012-03-15",
+  "nova_senha": "...",
+  "confirmar_senha": "..."
+}
+```
+
+### Validação por perfil
+
+| Perfil | CPF | Data de nascimento |
+|--------|-----|-------------------|
+| **Coroinha** | CPF do usuário | `Coroinha.data_nascimento` (própria) |
+| **Pai** | CPF do responsável | `data_nascimento` de **qualquer filho** vinculado |
+
+- Resposta genérica em falha: *"CPF ou data de nascimento incorretos"* — não revelar se CPF existe
+- Só funciona para `Pai` ou `Coroinha`; staff → coordenador redefine no admin
+- **Rate limit:** 5 tentativas/hora por IP + por CPF (Redis)
+- Audit log: sucesso e falha (sem logar a data informada)
+
+```python
+# AuthService.validar_recuperacao_familia(cpf, data_nascimento, usuario)
+if usuario.tipo_perfil == Coroinha:
+    return usuario.coroinha.data_nascimento == data_nascimento
+if usuario.tipo_perfil == Pai:
+    return usuario.responsavel.filhos.filter(data_nascimento=data_nascimento).exists()
+```
+
+Primeiro acesso (conta criada na inscrição): senha padrão = **últimos 4 dígitos do CPF**; forçar troca no 1º login (`must_change_password=True`).
+
+## Perfis (`TipoPerfil`)
+
+| Perfil | Login | Escopo |
+|--------|-------|--------|
+| `Coordenador` | e-mail + senha | admin total |
+| `Secretario` | e-mail + senha | gestão operacional |
+| `Padre` | e-mail + senha | leitura pastoral |
+| `Pai` | **CPF + senha** | portal do filho (mesma visão do coroinha) |
+| `Coroinha` | **CPF + senha** | portal próprio |
+
+## Modelos (app `identity`)
+
+```python
+class Usuario(AbstractBaseUser):
+    cpf            # UNIQUE, nullable — USERNAME_FIELD para Pai/Coroinha
+    email          # UNIQUE, nullable — USERNAME_FIELD para staff
+    nome
+    must_change_password  # True no 1º login família
+    tipo_perfil
+    coroinha       # FK (tipo=Coroinha)
+    responsavel    # FK (tipo=Pai)
+```
+
+## Portal família — Pai vê o mesmo que o Coroinha
+
+**Uma única UI** (`/portal`) compartilhada entre Pai e Coroinha:
+
+| Dado | Pai | Coroinha |
+|------|-----|----------|
+| Próxima escala | ✅ filho selecionado | ✅ própria |
+| Minhas escalas + presença | ✅ | ✅ |
+| Formações concluídas | ✅ | ✅ |
+| Notícias / documentos | ✅ | ✅ |
+
+- **Pai com vários filhos:** seletor no topo; ao escolher, renderiza **mesmos componentes** do coroinha
+- **Coroinha:** entra direto no próprio perfil (sem seletor)
+- Backend: `PortalService.get_dados(coroinha_id, usuario)` valida ownership antes de retornar
+
+```python
+# Permission: IsFamilia + object-level
+def pode_ver_coroinha(usuario, coroinha_id):
+    if usuario.tipo_perfil == Coroinha:
+        return usuario.coroinha_id == coroinha_id
+    if usuario.tipo_perfil == Pai:
+        return coroinha_id in usuario.responsavel.filhos_ids()
+    return False
+```
+
+## JWT (SimpleJWT)
+
+- Payload: `{ sub, tipo_perfil, cpf?, email?, coroinha_id?, responsavel_id?, must_change_password }`
+- Rotas: `login`, `refresh`, `logout`, `me`, `recuperar-senha`, `trocar-senha`
+
+## Permissões DRF
+
+```python
+IsFamilia          # Pai | Coroinha — portal
+IsStaffPastoral    # Coordenador | Secretario | Padre
+IsGestorCoroinhas  # Coordenador | Secretario
+```
+
+## Matriz (portal família)
+
+| Recurso | Coord | Sec | Padre | Pai | Coroinha |
+|---------|:-----:|:---:|:-----:|:---:|:--------:|
+| Dashboard staff | ✅ | ✅ | 👁️ | ❌ | ❌ |
+| Portal (escalas, formações, presença) | ❌ | ❌ | ❌ | ✅ filho | ✅ próprio |
+| Notícias/Docs | ✅ | ✅ | 👁️ | 👁️ | 👁️ |
+| Gerenciar usuários | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+## Frontend — rotas
+
+```
+/login                     → CPF+senha (família) ou email+senha (staff) — abas ou auto-detect
+/recuperar-senha           → CPF + data de nascimento + nova senha (família)
+/portal                    → Pai + Coroinha (UI unificada)
+/portal?trocar-senha       → forced se must_change_password
+/dashboard/*               → staff
+/inscricao                 → público
+```
+
+## Bootstrap staff
+
+`python manage.py criar_coordenador --email ... --senha ...`
+
+## Audit
+
+Login, logout, recuperar-senha, trocar-senha, 403, rate-limit exceeded.

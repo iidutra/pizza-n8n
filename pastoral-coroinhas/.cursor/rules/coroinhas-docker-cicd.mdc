@@ -1,0 +1,39 @@
+---
+description: Docker, observabilidade e pipeline CI/CD
+globs: docker-compose*.yml,**/Dockerfile,.gitlab-ci.yml,.github/workflows/**,observability/**
+alwaysApply: false
+---
+
+# Docker & CI/CD
+
+## Docker
+
+- Multi-stage builds; imagem final enxuta
+- Healthchecks em `api`, `worker`, `db`, `redis`
+- Secrets via `.env` — nunca COPY de credenciais na imagem
+- Dev: `docker compose up`; prod: `docker-compose.prod.yml`
+- Migrations rodam no deploy staging automaticamente; prod com approve manual
+
+## Serviços compose (dev)
+
+`db`, `redis`, `minio`, `api`, `worker`, `frontend`, `nginx`
+
+## CI/CD (GitLab)
+
+Stages: `lint` → `test` → `build` → `deploy`
+
+- Backend: `ruff check` + `pytest --cov-fail-under=80`
+- Frontend: `npm run lint` + `npm test`
+- Build: tag `$CI_COMMIT_SHA`; push registry
+- Deploy staging em `develop`; prod em `main` (manual)
+
+## Observabilidade
+
+- Prometheus: métricas HTTP, Celery, negócio (`escala_criada_total`)
+- Grafana: dashboards API Health + Negócio + Celery
+- Loki + Promtail: logs JSON estruturados
+- Sentry: erros frontend e backend (free tier)
+
+## Rollback
+
+Redeploy imagem anterior por SHA tag — nunca `--force` em prod sem confirmação explícita.

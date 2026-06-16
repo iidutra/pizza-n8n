@@ -1,0 +1,54 @@
+---
+description: Modelo de domínio, entidades, regras de negócio e glossário
+globs: backend/**/models.py,backend/**/services/**/*.py,backend/**/repositories/**/*.py
+alwaysApply: false
+---
+
+# Domínio — Pastoral dos Coroinhas
+
+## Pessoas no sistema
+
+```
+Usuario (login)
+  ├── Coordenador / Secretario / Padre  → perfil staff, sem FK de domínio
+  ├── Pai       → FK Responsavel → M2M Coroinha (filhos)
+  └── Coroinha  → FK Coroinha (conta opcional do próprio coroinha)
+
+Coroinha (entidade pastoral — existe sem login)
+Responsavel (dados do pai/mãe — existe sem login; vinculado na inscrição)
+```
+
+- Inscrição aprovada cria `Coroinha` + `Responsavel` + contas `Usuario` (CPF do responsável obrigatório; CPF do coroinha se informado na ficha)
+- Senha inicial família: últimos 4 dígitos do CPF → `must_change_password=True` no 1º login
+- Coroinha menor sem CPF na ficha: só o pai acessa o portal por ele
+
+## Entidades principais
+
+| Entidade | Regras |
+|----------|--------|
+| `Usuario` | `cpf` ou `email` (único), `tipo_perfil`, FK para Coroinha ou Responsavel |
+| `Responsavel` | nome, **cpf** (obrigatório), telefone, whatsapp, email; M2M com Coroinha |
+| `Coroinha` | cpf opcional; **data_nascimento obrigatória** (inscrição + validação recuperar senha) |
+| `Inscricao` | Pendente→Aprovada cria Coroinha + Responsavel; snapshot JSON imutável |
+| `Missa` | recorrente (dia_semana + horario) |
+| `Escala` | N coroinhas por missa+data; modo SorteioAutomatico ou SelecaoManual |
+| `Presenca` | Presente/Ausente por EscalaItem; audit: quem registrou |
+| `Formacao` | M2M conclusões por coroinha |
+| `Mensagem` | canal WhatsApp/Email; template com `{nome}`, `{escala}` |
+
+## Sorteio equilibrado
+
+Priorizar coroinhas com **menos escalas nos últimos 90 dias**. Não repetir quem já está na escala do mesmo dia.
+
+## Portal família (Pai = mesma visão do Coroinha filho)
+
+Pai seleciona o filho → mesma tela que o coroinha veria (`/portal`).
+Escopo: escalas, presenças, formações, notícias. Read-only.
+
+## Relatórios
+
+Taxa presença = presenças / (presenças + faltas). Escalas futuras sem presença não entram no denominador.
+
+## Sacramentos (inscrição)
+
+Batizado, Primeira Eucaristia, Crisma — booleanos, não obrigatórios para aprovar inscrição.

@@ -1,0 +1,16 @@
+.env
+db.sqlite3
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+staticfiles/
+node_modules/
+.next/
+*.log
+.DS_Store
+.pytest_cache/
+.coverage
+htmlcov/
+backend/media/
+backend/test_media/

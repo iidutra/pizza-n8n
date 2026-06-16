@@ -1,0 +1,52 @@
+---
+description: Padrões Next.js — componentes, API client, validação e UI
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Frontend Next.js
+
+## Estrutura
+
+```
+app/(dashboard)/   → staff (Coordenador, Secretario, Padre)
+app/(portal)/      → Pai + Coroinha — UI unificada (mesma visão)
+app/(auth)/        → login (CPF ou email), recuperar-senha
+app/inscricao/     → formulário público
+components/ui/     → shadcn
+lib/api/           → cliente HTTP tipado
+hooks/             → TanStack Query wrappers
+types/             → DTOs espelhando serializers DRF
+```
+
+## Login e portal
+
+- Tela login: campo CPF (família) ou e-mail (staff) — auto-detect pelo formato ou abas
+- Máscara CPF na digitação; enviar só dígitos à API
+- `/recuperar-senha`: CPF + **data de nascimento** + nova senha + confirmar
+  - Label Pai: *"Data de nascimento do coroinha"*
+  - Label Coroinha: *"Sua data de nascimento"*
+  - Date picker `dd/mm/aaaa`; enviar ISO `YYYY-MM-DD` à API
+  - Erro genérico: *"CPF ou data de nascimento incorretos"*
+- `/portal`: componentes compartilhados Pai/Coroinha; seletor de filho só para Pai
+- Redirect para trocar senha se `must_change_password` no JWT
+
+- Server Components para listagens; `"use client"` só quando há estado/eventos
+- TanStack Query para fetch/cache; invalidar query após mutations
+- Zod schemas espelham serializers backend — validar antes de enviar
+- Proibido `any`; erros de API tratados com toast + mensagem amigável
+- Reutilizar visual do protótipo Lovable (Tailwind, cores, sidebar)
+
+## Nomenclatura
+
+- Componentes: `PascalCase` (`CoroinhasTable.tsx`)
+- Hooks: `useCoroinhas`, `useMontarEscala`
+- API routes internas só se necessário; preferir chamar Django direto
+
+## Templates de comunicação
+
+Usar placeholders `{nome}` e `{escala}` — espelhar backend `MensagemTemplate`.
+
+## Testes
+
+Vitest + Testing Library para formulários críticos (inscrição, login, recuperar-senha, presença, montar escala).
